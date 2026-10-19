@@ -1,0 +1,5 @@
+<Bindings>
+	<Binding name="RUIN_CODEX_OPEN" header="RUIN_CODEX" category="ADDONS">
+		RUIN_Codex_Open()
+	</Binding>
+</Bindings>
