@@ -6,6 +6,15 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
+## 0.3.4 — 2026-10-18
+
+4 changes since 0.3.0 (needs RUIN Core 0.3.7):
+
+1. Gear Path, the new first page: every known upgrade for your class and spec ranked by progress per minute (gain × confidence × relevance ÷ minutes), with its slot, source, time and a Quick / Medium / Long tag. Solo and Group switches, a priority choice (time efficient, biggest upgrade, quickest), "show only upgrades", how many of your bracket's best-in-slot items you have, and the next upgrade. Confidence and estimated times are shown, never hidden.
+2. Officers can note where a best-in-slot item comes from and how long it takes: shift-click the item, then type e.g. "quest 15 Duskwood" before pressing Set. The note travels with the list to RUIN and in exported strings.
+3. The Journal says plainly that its level ranges and boss tips are a WoW Classic sample until RUIN records WoW Forever's; drops RUIN members loot stay real.
+4. New RUIN look (the Codex tab, part of the RUIN Gaming Companion App), and Retail's interface number in the TOC. /codex path, /codex journal.
+
 ## 0.3.0 — 2026-10-18
 
 - Suite release: every RUIN addon moves to 0.3.0 together, bringing everything from the 0.2.x entries below. No further code changes.

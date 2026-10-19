@@ -1,12 +1,13 @@
-## Interface: 16001
-## Title: |cffc41e3aRUIN|r Codex
+## Interface: 16001, 120105
+## Title: |cffe6b862RUIN|r Codex
 ## Notes: Dungeon journal, drops learned by the whole org, and an upgrade line on item tooltips.
 ## Author: RUIN
-## Version: 0.3.0
+## Version: 0.3.4
 ## Dependencies: RUIN_Core
 ## SavedVariables: RUIN_CodexDB
 ## IconTexture: Interface\Icons\INV_Misc_Book_09
 ## X-Category: Guild
+## Category: RUIN Gaming Companion App
 
 Dungeons.lua
 Weights.lua

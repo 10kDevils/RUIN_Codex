@@ -1,21 +1,24 @@
 -- RUIN Codex
--- A dungeon and raid journal, drops that RUIN members loot shared across
--- the org, and a tooltip line saying whether an item is an upgrade for you,
--- scored with stat weights for your spec. Officers curate best-in-slot lists
--- and push them to RUIN; the Upgrades page lists the best known items for
--- your level and spec, and the Raids page plans joint raids with RUIN Muster.
+-- The Gear Path: every known upgrade for your class and spec ranked by
+-- progress per minute (gain x confidence x relevance / time to get it), with
+-- solo and group gear apart, as the RUIN Companion brief asks. Behind it: a
+-- dungeon and raid journal, drops that RUIN members loot shared across the
+-- org, a tooltip line saying whether an item is an upgrade for you, officer
+-- best-in-slot lists (with where and how long each item takes), and raid
+-- planning with RUIN Muster.
 local ADDON, ns = ...
 local R = RUIN_API
-if not R or (R.apiLevel or 1) < 3 then
-    print("|cffc41e3aRUIN|r Codex needs a newer RUIN Core (0.3.0 or later).")
+if not R or (R.apiLevel or 1) < 4 then
+    print("|cff54b7d9[RUIN]|r Codex needs a newer RUIN Core (0.3.7 or later).")
     return
 end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Codex", { version = "0.3.0" })
+local M = R:RegisterModule("Codex", { version = "0.3.4" })
 
-local DEFAULTS = { drops = {}, tooltip = true, spec = "Auto", bis = {} }
+local DEFAULTS = { drops = {}, tooltip = true, spec = "Auto", bis = {},
+                   pathSolo = true, pathGroup = true, pathSort = "Time efficient", onlyUpgrades = true }
 local BRACKETS = { "1-29", "30-44", "45-59", "60" }
 local CLASSES = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "WARLOCK", "DRUID" }
 local RAID_NEED = { [10] = { 2, 3, 5 }, [20] = { 3, 5, 12 }, [40] = { 5, 10, 25 } }
@@ -192,6 +195,64 @@ local function dropLine(link)
 end
 
 ---------------------------------------------------------------------------
+-- Where an item comes from and roughly how long it takes. Officers can set
+-- the kind, minutes and place for each best-in-slot item; otherwise Codex
+-- uses these estimates by kind (they are marked as estimates in the UI).
+---------------------------------------------------------------------------
+local SOURCE_KINDS = {
+    vendor  = { label = "Vendor",      minutes = 10,  solo = true },
+    quest   = { label = "Quest",       minutes = 20,  solo = true },
+    ah      = { label = "Auction",     minutes = 10,  solo = true },
+    crafted = { label = "Crafted",     minutes = 30,  solo = true },
+    world   = { label = "World drop",  minutes = 90,  solo = true },
+    group   = { label = "Group quest", minutes = 40,  solo = false },
+    dungeon = { label = "Dungeon",     minutes = 45,  solo = false },
+    raid    = { label = "Raid",        minutes = 180, solo = false },
+    unknown = { label = "Unknown",     minutes = 60,  solo = true },
+}
+local KIND_WORDS = { vendor = "vendor", quest = "quest", ah = "ah", auction = "ah", crafted = "crafted", craft = "crafted",
+                     world = "world", drop = "world", group = "group", elite = "group", dungeon = "dungeon", raid = "raid" }
+ns.SourceKinds = SOURCE_KINDS
+
+-- Quick under 30 minutes, Medium under an hour, Long beyond.
+local function timeTag(minutes)
+    if minutes < 30 then return "Quick" elseif minutes < 60 then return "Medium" end
+    return "Long"
+end
+M.TimeTag = timeTag
+
+local function cleanSource(src)
+    if type(src) ~= "table" then return nil end
+    local k = SOURCE_KINDS[src.k or ""] and src.k or "unknown"
+    local m = tonumber(src.m)
+    m = m and math.max(1, math.min(600, math.floor(m))) or nil
+    local z = type(src.z) == "string" and src.z:gsub("|", ""):sub(1, 32) or nil
+    if z == "" then z = nil end
+    return { k = k, m = m, z = z }
+end
+
+-- "quest 15 Duskwood" -> { k = "quest", m = 15, z = "Duskwood" }
+function M.ParseSource(text)
+    text = R.Util.Trim(text or "")
+    if text == "" then return nil end
+    local k, m, rest = nil, nil, {}
+    for word in text:gmatch("%S+") do
+        local lw = word:lower():gsub("m$", "")
+        if not k and KIND_WORDS[word:lower()] then k = KIND_WORDS[word:lower()]
+        elseif not m and tonumber(lw) then m = tonumber(lw)
+        else rest[#rest + 1] = word end
+    end
+    if not k and not m then return nil end
+    return cleanSource({ k = k or "unknown", m = m, z = table.concat(rest, " ") })
+end
+
+local function sourceText(src)
+    if not src then return nil end
+    local kind = SOURCE_KINDS[src.k] or SOURCE_KINDS.unknown
+    return kind.label .. (src.z and (" (" .. src.z .. ")") or "")
+end
+
+---------------------------------------------------------------------------
 -- Best-in-slot lists: officers curate one per class, spec and level bracket
 ---------------------------------------------------------------------------
 local function bisKey(class, spec, bracket) return class .. ":" .. spec .. ":" .. bracket end
@@ -214,11 +275,14 @@ local function bisLine(link)
     return ("%sCodex: RUIN best-in-slot for %s (%s)|r"):format("|cffc09cf0", spec, table.concat(hits, ", "))
 end
 
-function M:SetBis(class, spec, bracket, slot, itemId)
+-- src (optional): { k = kind, m = minutes, z = place }, see SOURCE_KINDS.
+function M:SetBis(class, spec, bracket, slot, itemId, src)
     if not R:IsOfficer() and R:IsConnected() then return self:Print("Only officers edit RUIN's best-in-slot lists.") end
     local key = bisKey(class, spec, bracket)
     local list = db.bis[key] or { c = class, s = spec, b = bracket, i = {} }
     list.i[slot] = itemId
+    list.src = list.src or {}
+    list.src[slot] = itemId and cleanSource(src) or nil
     list.t, list.by = GetServerTime(), UnitName("player")
     list.sent = nil
     db.bis[key] = list
@@ -231,7 +295,7 @@ function M:SendBis(class, spec, bracket)
     if not list then return self:Print("That list is empty.") end
     if not R:IsOfficer() then return self:Print("Only officers send best-in-slot lists to RUIN.") end
     list.t = GetServerTime()
-    self:Send("BIS", { k = key, c = list.c, s = list.s, b = list.b, i = list.i, t = list.t, by = list.by }, "ORG", nil, R.PRIORITY.BULK)
+    self:Send("BIS", { k = key, c = list.c, s = list.s, b = list.b, i = list.i, src = list.src, t = list.t, by = list.by }, "ORG", nil, R.PRIORITY.BULK)
     list.sent = true
     self:Toast(("Sent the %s %s (%s) best-in-slot list to RUIN."):format(spec, class:lower(), bracket))
 end
@@ -240,11 +304,14 @@ function M:OnBis(d, sender)
     if type(d.k) ~= "string" or type(d.i) ~= "table" or type(d.t) ~= "number" then return end
     local cur = db.bis[d.k]
     if cur and (cur.t or 0) >= d.t then return end
-    local items = {}
+    local items, srcs = {}, {}
     for slot, id in pairs(d.i) do
-        if tonumber(slot) and tonumber(id) then items[tonumber(slot)] = tonumber(id) end
+        if tonumber(slot) and tonumber(id) then
+            items[tonumber(slot)] = tonumber(id)
+            srcs[tonumber(slot)] = type(d.src) == "table" and cleanSource(d.src[slot]) or nil
+        end
     end
-    db.bis[d.k] = { c = d.c, s = d.s, b = d.b, i = items, t = d.t, by = sender, sent = true }
+    db.bis[d.k] = { c = d.c, s = d.s, b = d.b, i = items, src = srcs, t = d.t, by = sender, sent = true }
     if d.c == myClass() and d.s == mySpec() then
         self:Toast(("New RUIN best-in-slot list for %s (%s) from %s."):format(d.s, d.b, W.ClassName(sender)))
     end
@@ -256,7 +323,7 @@ function M:OnAsk()
     C_Timer.After(4 + math.random() * 8, function()
         for key, list in pairs(db.bis) do
             if list.sent then
-                self:Send("BIS", { k = key, c = list.c, s = list.s, b = list.b, i = list.i, t = list.t, by = list.by }, "ORG", nil, R.PRIORITY.BULK)
+                self:Send("BIS", { k = key, c = list.c, s = list.s, b = list.b, i = list.i, src = list.src, t = list.t, by = list.by }, "ORG", nil, R.PRIORITY.BULK)
             end
         end
     end)
@@ -266,7 +333,7 @@ function M:ExportBis(class, spec, bracket)
     local list = db.bis[bisKey(class, spec, bracket)]
     if not list then return self:Print("That list is empty.") end
     R:ShowText("Export best-in-slot list", "Copy with Ctrl+C. Officers can import it with the Import button.",
-        R.Util.Encode("BIS", { c = list.c, s = list.s, b = list.b, i = list.i }), nil, true)
+        R.Util.Encode("BIS", { c = list.c, s = list.s, b = list.b, i = list.i, src = list.src }), nil, true)
 end
 
 function M:ImportBis(text)
@@ -275,7 +342,9 @@ function M:ImportBis(text)
         return self:Print("Couldn't import: " .. tostring(err or "not a best-in-slot list") .. ".")
     end
     for slot, id in pairs(d.i) do
-        if tonumber(slot) and tonumber(id) then self:SetBis(d.c, d.s, d.b, tonumber(slot), tonumber(id)) end
+        if tonumber(slot) and tonumber(id) then
+            self:SetBis(d.c, d.s, d.b, tonumber(slot), tonumber(id), type(d.src) == "table" and d.src[slot] or nil)
+        end
     end
     ui.bisClass, ui.bisSpec, ui.bisBracket = d.c, d.s, d.b
     self:Print(("Imported the %s %s (%s) list. Press Send to RUIN to share it."):format(d.s, d.c:lower(), d.b))
@@ -418,6 +487,157 @@ function M:Compare(link)
 end
 
 ---------------------------------------------------------------------------
+-- Gear Path: progress per minute (the RUIN Companion brief)
+--   P = gain x confidence x relevance / minutes
+-- gain: percent better than what you wear (an empty slot counts as 100)
+-- confidence: how sure RUIN is about the item and its source
+-- relevance: usable now, or a target for a few levels ahead
+-- minutes: an officer's time for it, else an estimate by source kind
+-- It is a ranking aid, not a simulation; the page says which numbers are
+-- estimates.
+---------------------------------------------------------------------------
+local function isRaid(inst)
+    for _, r in ipairs(ns.Raids or {}) do if r.name == inst then return true end end
+    return false
+end
+
+local function owned(id)
+    local count = (C_Item and C_Item.GetItemCount and C_Item.GetItemCount(id, true)) or (GetItemCount and GetItemCount(id, true))
+    if count and count > 0 then return true end
+    for _, slot in ipairs(BIS_SLOTS) do
+        local link = GetInventoryItemLink("player", slot)
+        if link and itemIdFromLink(link) == id then return true end
+    end
+    return false
+end
+
+local function confidenceLabel(c)
+    if c >= 0.8 then return "High" elseif c >= 0.55 then return "Medium" end
+    return "Low"
+end
+
+-- One entry per item, with every way RUIN knows to get it.
+local function gearCandidates()
+    local level = UnitLevel("player") or 1
+    local class, spec = myClass(), mySpec()
+    local byId = {}
+    local function entry(id)
+        local e = byId[id]
+        if not e then
+            e = { id = id, sources = {}, evidence = {} }
+            byId[id] = e
+        end
+        return e
+    end
+    -- Officer best-in-slot lists for your class and spec, every bracket.
+    for _, b in ipairs(BRACKETS) do
+        local list = db.bis[bisKey(class or "", spec or "", b)]
+        for slot, id in pairs(list and list.i or {}) do
+            local e = entry(id)
+            e.bis = b
+            local src = list.src and list.src[slot]
+            if src then
+                e.sources[#e.sources + 1] = { k = src.k, m = src.m, z = src.z, officer = true }
+            end
+            e.evidence[#e.evidence + 1] = "RUIN best-in-slot (" .. b .. ")"
+        end
+    end
+    -- Drops RUIN members have looted.
+    for inst, items in pairs(db.drops) do
+        for id, d in pairs(items) do
+            local e = entry(id)
+            local n = d.n or 1
+            e.sources[#e.sources + 1] = { k = isRaid(inst) and "raid" or "dungeon", z = inst, seen = n }
+            e.evidence[#e.evidence + 1] = ("looted %dx in %s"):format(n, inst)
+        end
+    end
+
+    local out = {}
+    for id, e in pairs(byId) do
+        local name, link, _, minLevel = itemInfo(id)
+        e.name, e.link, e.minLevel = name, link, minLevel
+        if link and equippable(link) and not (minLevel and minLevel > level + 5) then
+            local pct, slot = compare(link)
+            e.slot = slot
+            if pct ~= "same" and not (slot == nil and pct == nil) then
+                -- best known source: an officer's note first, then the most-seen drop
+                table.sort(e.sources, function(a, b)
+                    if (a.officer and 1 or 0) ~= (b.officer and 1 or 0) then return a.officer == true end
+                    return (a.seen or 0) > (b.seen or 0)
+                end)
+                local src = e.sources[1] or { k = "unknown" }
+                local kind = SOURCE_KINDS[src.k] or SOURCE_KINDS.unknown
+                e.kind, e.place = src.k, src.z
+                e.minutes = src.m or kind.minutes
+                e.estimated = src.m == nil
+                e.solo = kind.solo
+                -- confidence
+                local c
+                if src.officer and src.m then c = 0.9
+                elseif src.officer then c = 0.75
+                elseif src.seen then c = math.min(0.85, 0.4 + 0.1 * src.seen)
+                elseif e.bis then c = 0.5
+                else c = 0.35 end
+                e.confidence, e.confidenceLabel = c, confidenceLabel(c)
+                -- relevance
+                local r = e.bis and 1 or 0.85
+                if minLevel and minLevel > level then r = r * 0.6; e.future = minLevel end
+                e.relevance = r
+                -- gain
+                if pct == "empty" then e.gain = 100
+                elseif pct == "noscore" then e.gain = 25
+                elseif type(pct) == "number" then e.gain = math.min(100, pct)
+                else e.gain = 0 end
+                e.pct = pct
+                e.upgrade = (pct == "empty" or pct == "noscore" or (type(pct) == "number" and pct >= 1))
+                e.priority = e.gain * c * r / math.max(1, e.minutes)
+                e.tag = timeTag(e.minutes)
+                e.owned = owned(id)
+                out[#out + 1] = e
+            end
+        end
+    end
+    return out
+end
+
+-- opts: { solo = bool, group = bool, sort = "Time efficient" | "Biggest upgrade" | "Quickest",
+--         onlyUpgrades = bool, limit = n }
+-- Returns the ranked list and a summary { collected, total, next }.
+function M:GearPath(opts)
+    opts = opts or {}
+    local solo = opts.solo ~= false
+    local group = opts.group ~= false
+    local list = {}
+    for _, e in ipairs(gearCandidates()) do
+        local keep = (e.solo and solo) or (not e.solo and group)
+        if opts.onlyUpgrades ~= false and not e.upgrade then keep = false end
+        if e.owned then keep = false end
+        if keep then list[#list + 1] = e end
+    end
+    local sort = opts.sort or "Time efficient"
+    table.sort(list, function(a, b)
+        if sort == "Biggest upgrade" then
+            if a.gain ~= b.gain then return a.gain > b.gain end
+        elseif sort == "Quickest" then
+            if a.minutes ~= b.minutes then return a.minutes < b.minutes end
+        end
+        if a.priority ~= b.priority then return a.priority > b.priority end
+        return a.id < b.id
+    end)
+    local limit = opts.limit or 40
+    while #list > limit do table.remove(list) end
+
+    -- "4/6 collected": the current bracket's best-in-slot list for your spec.
+    local collected, total = 0, 0
+    local bis = db.bis[bisKey(myClass() or "", mySpec() or "", bracketFor())]
+    for _, id in pairs(bis and bis.i or {}) do
+        total = total + 1
+        if owned(id) then collected = collected + 1 end
+    end
+    return list, { collected = collected, total = total, next = list[1] }
+end
+
+---------------------------------------------------------------------------
 -- Raid planning with RUIN Muster
 ---------------------------------------------------------------------------
 local function defaultWhen()
@@ -445,6 +665,7 @@ end
 
 local function journalLines(dg, isRaid)
     local lines = {
+        { W.TagText("Sample", "WoW Classic sample") .. C.dim .. "  Level ranges and boss tips are Classic's until RUIN records Forever's. Drops below are real.|r" },
         { C.gold .. dg.name .. "|r" },
         { C.dim .. (isRaid and (dg.size .. " players") or ("Levels " .. dg.levels)) .. "  ·  " .. dg.where .. "|r" },
         { " " },
@@ -507,42 +728,160 @@ local function specOptions()
     return opts
 end
 
-local function buildUpgrades(page)
-    local h = W.Header(page, "Best known upgrades for you")
-    h:SetPoint("TOPLEFT", 0, -2)
+local SORTS = { "Time efficient", "Biggest upgrade", "Quickest" }
+
+local function classSpecLine()
+    local class = myClass()
+    local names = LOCALIZED_CLASS_NAMES_MALE
+    local cname = (names and class and names[class]) or (class and (class:sub(1, 1) .. class:sub(2):lower())) or "?"
+    return W.ClassIcon(class, 18) .. "  " .. W.ClassName(cname, class) .. C.dim .. "  -  |r" .. C.white .. tostring(mySpec() or "?") .. "|r"
+end
+
+-- The brief's Gear Path: Solo / Group, a priority choice, and every known
+-- upgrade with its slot, source, time and a Quick / Medium / Long tag.
+local function buildGearPath(page)
+    ui.specLine = W.Label(page, "", "GameFontNormalLarge")
+    ui.specLine:SetPoint("TOPLEFT", 0, -2)
     ui.specCycle = W.Cycle(page, 170, specOptions(), function() return db.spec end,
         function(v) db.spec = v; refreshPage() end, "Weights: ")
     ui.specCycle:SetPoint("TOPRIGHT", page, "TOPRIGHT", 0, 2)
     local tip = W.Check(page, "Tooltip lines", function() return db.tooltip end, function(v) db.tooltip = v end)
-    tip:SetPoint("RIGHT", ui.specCycle, "LEFT", -110, 0)
-    ui.upSub = W.Label(page, "", "GameFontHighlightSmall")
-    ui.upSub:SetPoint("TOPLEFT", 0, -20)
-    ui.upSub:SetPoint("RIGHT", page, "RIGHT", -6, 0)
-    ui.upgrades = W.List(page, 30, function(row)
+    tip:SetPoint("RIGHT", ui.specCycle, "LEFT", -96, 0)
+
+    ui.soloBtn = W.Button(page, "Solo", 76, function()
+        db.pathSolo = not db.pathSolo
+        if not db.pathSolo and not db.pathGroup then db.pathGroup = true end
+        refreshPage()
+    end)
+    ui.soloBtn:SetPoint("TOPLEFT", 0, -30)
+    ui.groupBtn = W.Button(page, "Group", 76, function()
+        db.pathGroup = not db.pathGroup
+        if not db.pathSolo and not db.pathGroup then db.pathSolo = true end
+        refreshPage()
+    end)
+    ui.groupBtn:SetPoint("LEFT", ui.soloBtn, "RIGHT", 4, 0)
+    ui.sortCycle = W.Cycle(page, 200, SORTS, function() return db.pathSort end,
+        function(v) db.pathSort = v; refreshPage() end, "Priority: ")
+    ui.sortCycle:SetPoint("LEFT", ui.groupBtn, "RIGHT", 14, 0)
+    ui.onlyUp = W.Check(page, "Show only upgrades", function() return db.onlyUpgrades end,
+        function(v) db.onlyUpgrades = v; refreshPage() end)
+    ui.onlyUp:SetPoint("LEFT", ui.sortCycle, "RIGHT", 12, 0)
+
+    -- column heads
+    local heads = CreateFrame("Frame", nil, page)
+    heads:SetPoint("TOPLEFT", 0, -60)
+    heads:SetPoint("RIGHT", page, "RIGHT", -24, 0)
+    heads:SetHeight(16)
+    local function head(text, point, x, width, justify)
+        local fs = W.Label(heads, text, "GameFontHighlightSmall")
+        fs:SetTextColor(W.PALETTE.sub[1], W.PALETTE.sub[2], W.PALETTE.sub[3])
+        fs:SetPoint(point, heads, point, x, 0)
+        if width then fs:SetWidth(width) end
+        if justify then fs:SetJustifyH(justify) end
+        return fs
+    end
+    head("#", "LEFT", 6)
+    head("Item", "LEFT", 54)
+    head("Slot", "RIGHT", -280, 70)
+    head("Source", "RIGHT", -152, 124)
+    head("Time", "RIGHT", -70, 40, "RIGHT")
+    head("Priority", "RIGHT", -6, 60, "CENTER")
+
+    ui.path = W.List(page, 34, function(row)
+        row.rank = W.Label(row, "", "GameFontHighlightSmall")
+        row.rank:SetPoint("LEFT", 6, 0)
+        row.rank:SetWidth(18)
         row.icon = row:CreateTexture(nil, "ARTWORK")
-        row.icon:SetSize(24, 24)
-        row.icon:SetPoint("LEFT", 4, 0)
+        row.icon:SetSize(26, 26)
+        row.icon:SetPoint("LEFT", 24, 0)
         row.text = W.Label(row, "")
-        row.text:SetPoint("TOPLEFT", row.icon, "TOPRIGHT", 8, 1)
-        row.text:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+        row.text:SetPoint("TOPLEFT", row.icon, "TOPRIGHT", 6, 2)
+        row.text:SetPoint("RIGHT", row, "RIGHT", -356, 0)
         row.text:SetWordWrap(false)
         row.sub = W.Label(row, "", "GameFontHighlightSmall")
         row.sub:SetPoint("TOPLEFT", row.text, "BOTTOMLEFT", 0, -2)
-        row.sub:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+        row.sub:SetPoint("RIGHT", row, "RIGHT", -356, 0)
         row.sub:SetWordWrap(false)
-    end, function(row, e)
+        row.slot = W.Label(row, "", "GameFontHighlightSmall")
+        row.slot:SetPoint("RIGHT", row, "RIGHT", -280, 0)
+        row.slot:SetWidth(70)
+        row.source = W.Label(row, "", "GameFontHighlightSmall")
+        row.source:SetPoint("RIGHT", row, "RIGHT", -152, 0)
+        row.source:SetWidth(124)
+        row.source:SetWordWrap(false)
+        row.time = W.Label(row, "", "GameFontHighlightSmall")
+        row.time:SetPoint("RIGHT", row, "RIGHT", -70, 0)
+        row.time:SetWidth(40)
+        row.time:SetJustifyH("RIGHT")
+        row.pill = W.Pill(row, 60)
+        row.pill:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+    end, function(row, e, i)
         local icon = GetItemIcon and GetItemIcon(e.id) or (C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(e.id))
         row.icon:SetTexture(icon or "Interface\\Icons\\INV_Misc_QuestionMark")
-        local gain = (e.pct == "empty") and (C.good .. "fills your empty " .. (SLOT_NAMES[e.slot] or "slot") .. "|r")
+        row.rank:SetText(C.dim .. i .. "|r")
+        local gain = (e.pct == "empty") and (C.good .. "fills an empty slot|r")
             or (e.pct == "noscore" and (C.good .. "upgrade|r"))
-            or ("%s+%d%%|r over your %s"):format(C.good, e.pct, SLOT_NAMES[e.slot] or "gear")
+            or (type(e.pct) == "number" and (e.pct >= 1 and ("%s+%d%%|r"):format(C.good, e.pct) or ("%s%d%%|r"):format(C.dim, e.pct)))
+            or ""
         row.text:SetText((e.link or e.name or ("item #" .. e.id)) .. "  " .. gain)
-        row.sub:SetText(C.dim .. table.concat(e.sources, "  ·  ") .. (e.minLevel and e.minLevel > 1 and ("  ·  level " .. e.minLevel) or "") .. "|r")
+        local conf = W.TagText(e.confidenceLabel == "High" and "Verified" or (e.confidenceLabel == "Low" and "Sample" or "Unverified"),
+            e.confidenceLabel .. " confidence")
+        local ev = e.evidence[1] or "no source recorded yet"
+        row.sub:SetText(conf .. C.dim .. "  ·  " .. ev .. (e.future and ("  ·  at level " .. e.future) or "") .. "|r")
+        row.slot:SetText(((SLOT_NAMES[e.slot] or "-"):gsub("^%l", string.upper)))
+        local kind = SOURCE_KINDS[e.kind] or SOURCE_KINDS.unknown
+        row.source:SetText(kind.label .. (e.place and (C.dim .. " (" .. e.place .. ")|r") or ""))
+        row.time:SetText((e.estimated and C.dim .. "~" or C.white) .. W.Duration(e.minutes * 60) .. "|r")
+        row.pill:SetTag(e.tag)
         row.link = e.link
+        row.tip = function(tt)
+            tt:AddLine(" ")
+            tt:AddLine(("Gear Path: gain %d x confidence %.2f x relevance %.2f / %d min"):format(e.gain, e.confidence, e.relevance, e.minutes), 0.55, 0.72, 0.85)
+            tt:AddLine(e.estimated and "Time is an estimate for this kind of source." or "Time set by a RUIN officer.", 0.6, 0.65, 0.75)
+            tt:AddLine(e.solo and "Solo" or "Needs a group", 0.6, 0.65, 0.75)
+        end
     end)
-    ui.upgrades:SetEmptyText("No known upgrades yet. Codex learns items as RUIN members loot them, and officers add best-in-slot lists.")
-    ui.upgrades.frame:SetPoint("TOPLEFT", 0, -40)
-    ui.upgrades.frame:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -24, 0)
+    ui.path:SetEmptyText("No known upgrades yet. Codex learns items as RUIN members loot them, and officers add best-in-slot lists with where each item comes from and how long it takes.")
+    ui.path.frame:SetPoint("TOPLEFT", 0, -78)
+    ui.path.frame:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -24, 60)
+
+    -- footer: collected count, progress bar, next upgrade
+    local foot = W.Card(page)
+    foot:SetPoint("BOTTOMLEFT", 0, 0)
+    foot:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", 0, 0)
+    foot:SetHeight(52)
+    ui.collected = W.Label(foot, "", "GameFontHighlight")
+    ui.collected:SetPoint("TOPLEFT", 12, -8)
+    ui.bar = W.Progress(foot, 230, 8)
+    ui.bar:SetPoint("TOPLEFT", ui.collected, "BOTTOMLEFT", 0, -6)
+    ui.nextUp = W.Label(foot, "", "GameFontHighlightSmall")
+    ui.nextUp:SetPoint("TOPRIGHT", -12, -9)
+    ui.nextUp:SetJustifyH("RIGHT")
+    ui.pathNote = W.Label(foot, "", "GameFontHighlightSmall")
+    ui.pathNote:SetPoint("BOTTOMRIGHT", -12, 8)
+    ui.pathNote:SetJustifyH("RIGHT")
+end
+
+local function refreshGearPath()
+    ui.specCycle.Refresh()
+    ui.sortCycle.Refresh()
+    ui.onlyUp:Refresh()
+    ui.specLine:SetText(classSpecLine() .. C.dim .. ("   level %d"):format(UnitLevel("player") or 0) .. "|r")
+    if db.pathSolo then ui.soloBtn:LockHighlight() else ui.soloBtn:UnlockHighlight() end
+    if db.pathGroup then ui.groupBtn:LockHighlight() else ui.groupBtn:UnlockHighlight() end
+    local list, sum = M:GearPath({ solo = db.pathSolo, group = db.pathGroup, sort = db.pathSort,
+                                   onlyUpgrades = db.onlyUpgrades, limit = 40 })
+    ui.path:SetItems(list)
+    if sum.total > 0 then
+        ui.collected:SetText(("%d/%d collected"):format(sum.collected, sum.total) .. C.dim .. "  from RUIN's " .. bracketFor() .. " list|r")
+        ui.bar:SetValue(sum.collected / sum.total)
+    else
+        ui.collected:SetText(C.dim .. "No RUIN best-in-slot list for your spec at this level yet|r")
+        ui.bar:SetValue(0)
+    end
+    local n = sum.next
+    ui.nextUp:SetText(n and ("Next upgrade: %s  %s(%s)|r"):format(n.link or n.name or ("item #" .. n.id), C.dim, W.Duration(n.minutes * 60)) or "")
+    ui.pathNote:SetText(C.dim .. "~ = estimated time.  Ranked by gain x confidence x relevance / minutes.|r")
 end
 
 local function buildBis(page)
@@ -603,7 +942,9 @@ local function buildBis(page)
         row.slot:SetText((tostring(SLOT_NAMES[slot] or slot):gsub("^%l", string.upper)))
         local link
         if id then link = select(2, itemInfo(id)) end
-        row.text:SetText(id and (itemText(id)) or (C.dim .. "-|r"))
+        local src = id and list.src and list.src[slot]
+        row.text:SetText(id and (itemText(id) .. (src and (C.dim .. "  ·  " .. sourceText(src)
+            .. (src.m and (" " .. W.Duration(src.m * 60)) or "") .. "|r") or "")) or (C.dim .. "-|r"))
         row.link = link
         local officer = R:IsOfficer() or not R:IsConnected()
         row.box:SetShown(officer)
@@ -611,9 +952,11 @@ local function buildBis(page)
         row.clear:SetShown(officer and id ~= nil)
         row.set:SetScript("OnClick", function()
             local text = row.box:GetText() or ""
-            local newId = itemIdFromLink(text) or tonumber(text)
-            if not newId then return M:Print("Shift-click an item into the box, or type its item ID.") end
-            M:SetBis(ui.bisClass, ui.bisSpec, ui.bisBracket, slot, newId)
+            -- "[item] quest 15 Duskwood": the item, then where it comes from and minutes
+            local newId = itemIdFromLink(text) or tonumber(text:match("^%s*(%d+)"))
+            if not newId then return M:Print("Shift-click an item into the box, or type its item ID. Add where it comes from and minutes, e.g.  quest 15 Duskwood") end
+            local rest = text:gsub("|c%x+|H.-|h.-|h|r", ""):gsub("^%s*%d+", "")
+            M:SetBis(ui.bisClass, ui.bisSpec, ui.bisBracket, slot, newId, M.ParseSource(rest))
             row.box:SetText("")
             refreshPage()
         end)
@@ -676,9 +1019,9 @@ end
 
 local function buildPage(panel)
     ui.panel = panel
-    ui.tabs = W.SubTabs(panel, { "Journal", "Upgrades", "Best-in-slot", "Raids" }, function() refreshPage() end)
-    buildJournal(ui.tabs.pages[1])
-    buildUpgrades(ui.tabs.pages[2])
+    ui.tabs = W.SubTabs(panel, { "Gear Path", "Journal", "Best-in-slot", "Raids" }, function() refreshPage() end)
+    buildGearPath(ui.tabs.pages[1])
+    buildJournal(ui.tabs.pages[2])
     buildBis(ui.tabs.pages[3])
     buildRaids(ui.tabs.pages[4])
 
@@ -686,15 +1029,11 @@ local function buildPage(panel)
         if not ui.panel:IsVisible() then return end
         local tab = ui.tabs.selected
         if tab == 1 then
+            refreshGearPath()
+        elseif tab == 2 then
             ui.dungeons:SetItems(ns.Dungeons)
             local dg = ns.Dungeons[ui.selected] or ns.Dungeons[1]
             ui.detail:SetItems(dg and journalLines(dg, false) or {})
-        elseif tab == 2 then
-            ui.specCycle.Refresh()
-            local spec = mySpec()
-            ui.upSub:SetText(C.dim .. ("Scored with %s weights for a level %d %s. Items you can use within 3 levels, from RUIN's loot and best-in-slot lists."):format(
-                tostring(spec), UnitLevel("player") or 0, (myClass() or "?"):lower()) .. "|r")
-            ui.upgrades:SetItems(M:Upgrades(40))
         elseif tab == 3 then
             ui.bisClass = ui.bisClass or myClass() or "WARRIOR"
             ui.bisSpec = ui.bisSpec or mySpec() or ns.SpecOrder[ui.bisClass][1]
@@ -708,7 +1047,7 @@ local function buildPage(panel)
             ui.bisImport:SetShown(officer)
             ui.bisInfo:SetText(C.dim .. (list and list.t and ("Last changed by %s, %s%s."):format(tostring(list.by), W.Ago(GetServerTime() - list.t),
                 list.sent and "" or (officer and "  Not sent to RUIN yet." or "")) or
-                (officer and "No list yet. Shift-click items into the boxes and press Set, then Send to RUIN." or "No RUIN list for this spec yet.")) .. "|r")
+                (officer and "No list yet. Shift-click an item into a box, add its source and minutes (quest 15 Duskwood), press Set, then Send to RUIN." or "No RUIN list for this spec yet.")) .. "|r")
             ui.bisList:SetItems(BIS_SLOTS)
         elseif tab == 4 then
             ui.raids:SetItems(ns.Raids)
@@ -770,13 +1109,14 @@ function RUIN_Codex_Open() M:OpenTab() end
 BINDING_HEADER_RUIN_CODEX = "RUIN Codex"
 BINDING_NAME_RUIN_CODEX_OPEN = "Open Codex"
 
--- /codex [dungeon or raid name] | upgrades | bis | spec <name|auto>
+-- /codex [dungeon or raid name] | path | journal | bis | spec <name|auto>
 SLASH_RUINCODEX1 = "/codex"
 SlashCmdList.RUINCODEX = function(msg)
     msg = (msg or ""):lower()
     local cmd, rest = msg:match("^(%S*)%s*(.*)$")
     local tab = 1
-    if cmd == "upgrades" then tab = 2
+    if cmd == "upgrades" or cmd == "path" or cmd == "gear" then tab = 1
+    elseif cmd == "journal" then tab = 2
     elseif cmd == "bis" then tab = 3
     elseif cmd == "spec" then
         local pick = "Auto"
@@ -786,7 +1126,7 @@ SlashCmdList.RUINCODEX = function(msg)
         return
     elseif msg ~= "" then
         for i, dg in ipairs(ns.Dungeons) do
-            if dg.name:lower():find(msg, 1, true) or dg.id == msg then ui.selected = i end
+            if dg.name:lower():find(msg, 1, true) or dg.id == msg then ui.selected = i; tab = 2 end
         end
         for i, r in ipairs(ns.Raids) do
             if r.name:lower():find(msg, 1, true) or r.id == msg then ui.raid = i; tab = 4 end
