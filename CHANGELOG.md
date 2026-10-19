@@ -6,6 +6,14 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
+## 0.3.5 — 2026-10-19
+
+Macros, phase 1.
+
+1. **Macros page:** 113 ready-made macros for every class and spec plus shared ones for all classes (combat, utility, quality of life, leveling, raid, PvP), filtered by class, spec, tag and search. Each one shows its text, a short note and the spells it needs, and your class's spells you don't know yet are flagged.
+2. **Add to your macros:** *Add to account* or *Add to character* creates it for you (outside combat; in combat it is queued until you leave it), keeps names unique, and shows how many of your 120 account and 30 character slots are used. Items such as food, drink and potions are filled in from your bags. Macros that say something in chat ask first. On a client without macro creation, *Copy text* gives you the text.
+3. Every macro is checked before it can be added: 255 characters at most, no `/run`, `/script`, `/console` or other commands that could harm your game.
+
 ## 0.3.4 — 2026-10-18
 
 4 changes since 0.3.0 (needs RUIN Core 0.3.7):

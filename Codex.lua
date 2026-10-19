@@ -15,10 +15,12 @@ end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Codex", { version = "0.3.4" })
+local M = R:RegisterModule("Codex", { version = "0.3.5" })
+ns.Codex = M
 
 local DEFAULTS = { drops = {}, tooltip = true, spec = "Auto", bis = {},
-                   pathSolo = true, pathGroup = true, pathSort = "Time efficient", onlyUpgrades = true }
+                   pathSolo = true, pathGroup = true, pathSort = "Time efficient", onlyUpgrades = true,
+                   installed = {} }
 local BRACKETS = { "1-29", "30-44", "45-59", "60" }
 local CLASSES = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "WARLOCK", "DRUID" }
 local RAID_NEED = { [10] = { 2, 3, 5 }, [20] = { 3, 5, 12 }, [40] = { 5, 10, 25 } }
@@ -1019,11 +1021,12 @@ end
 
 local function buildPage(panel)
     ui.panel = panel
-    ui.tabs = W.SubTabs(panel, { "Gear Path", "Journal", "Best-in-slot", "Raids" }, function() refreshPage() end)
+    ui.tabs = W.SubTabs(panel, { "Gear Path", "Journal", "Best-in-slot", "Macros", "Raids" }, function() refreshPage() end)
     buildGearPath(ui.tabs.pages[1])
     buildJournal(ui.tabs.pages[2])
     buildBis(ui.tabs.pages[3])
-    buildRaids(ui.tabs.pages[4])
+    if ns.Macros then ns.Macros.Build(ui.tabs.pages[4]) end
+    buildRaids(ui.tabs.pages[5])
 
     refreshPage = function()
         if not ui.panel:IsVisible() then return end
@@ -1050,6 +1053,8 @@ local function buildPage(panel)
                 (officer and "No list yet. Shift-click an item into a box, add its source and minutes (quest 15 Duskwood), press Set, then Send to RUIN." or "No RUIN list for this spec yet.")) .. "|r")
             ui.bisList:SetItems(BIS_SLOTS)
         elseif tab == 4 then
+            if ns.Macros then ns.Macros.Refresh() end
+        elseif tab == 5 then
             ui.raids:SetItems(ns.Raids)
             local raid = ns.Raids[ui.raid] or ns.Raids[1]
             ui.raidDetail:SetItems(raid and journalLines(raid, true) or {})
@@ -1078,6 +1083,9 @@ function M:OnEnable()
     if type(RUIN_CodexDB) ~= "table" then RUIN_CodexDB = {} end
     db = RUIN_CodexDB
     for k, v in pairs(DEFAULTS) do if db[k] == nil then db[k] = v end end
+    ns.CodexDB = function() return db end
+    ns.CodexHelpers = { myClass = myClass, mySpec = mySpec, CLASSES = CLASSES }
+    if ns.Macros then ns.Macros.Init(self) end
 
     self:Listen("DROP", "OnDrop")
     self:Listen("BIS", "OnBis")
@@ -1109,7 +1117,7 @@ function RUIN_Codex_Open() M:OpenTab() end
 BINDING_HEADER_RUIN_CODEX = "RUIN Codex"
 BINDING_NAME_RUIN_CODEX_OPEN = "Open Codex"
 
--- /codex [dungeon or raid name] | path | journal | bis | spec <name|auto>
+-- /codex [dungeon or raid name] | path | journal | bis | macros | spec <name|auto>
 SLASH_RUINCODEX1 = "/codex"
 SlashCmdList.RUINCODEX = function(msg)
     msg = (msg or ""):lower()
@@ -1118,6 +1126,7 @@ SlashCmdList.RUINCODEX = function(msg)
     if cmd == "upgrades" or cmd == "path" or cmd == "gear" then tab = 1
     elseif cmd == "journal" then tab = 2
     elseif cmd == "bis" then tab = 3
+    elseif cmd == "macros" or cmd == "macro" then tab = 4
     elseif cmd == "spec" then
         local pick = "Auto"
         for _, s in ipairs(ns.SpecOrder[myClass() or ""] or {}) do if s:lower() == rest then pick = s end end
@@ -1129,7 +1138,7 @@ SlashCmdList.RUINCODEX = function(msg)
             if dg.name:lower():find(msg, 1, true) or dg.id == msg then ui.selected = i; tab = 2 end
         end
         for i, r in ipairs(ns.Raids) do
-            if r.name:lower():find(msg, 1, true) or r.id == msg then ui.raid = i; tab = 4 end
+            if r.name:lower():find(msg, 1, true) or r.id == msg then ui.raid = i; tab = 5 end
         end
     end
     M:OpenTab()
