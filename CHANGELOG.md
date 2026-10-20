@@ -6,6 +6,12 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
+## 0.3.9 — 2026-10-19
+
+1 change since 0.3.8:
+
+1. **One Journal for dungeons and raids.** Sub-tabs are now Gear Path, Best-in-slot, Macros and Journal (Raids merged into Journal). Inside the Journal, *Dungeons* and *Raids* switch the list. *Plan a joint RUIN run* and *Post in Muster* now work for dungeons too: a 5-player Dungeon event needing 1 tank, 1 healer and 3 DPS; raids keep the 10 / 20 / 40 size choice. `/codex raids`, `/codex dungeons` and `/codex <dungeon or raid name>` open the right list.
+
 ## 0.3.8 — 2026-10-19
 
 1 change since 0.3.7 (needs RUIN Core 0.3.12):

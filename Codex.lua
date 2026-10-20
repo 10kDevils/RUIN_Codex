@@ -15,7 +15,7 @@ end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Codex", { version = "0.3.8" })
+local M = R:RegisterModule("Codex", { version = "0.3.9" })
 ns.Codex = M
 
 local DEFAULTS = { drops = {}, tooltip = true, spec = "Auto", bis = {},
@@ -657,14 +657,21 @@ local function defaultWhen()
     return date("%Y-%m-%d %H:%M", time(t))
 end
 
-function M:PlanRaid(raid, when, size)
+-- Post a joint RUIN run of a dungeon (5 players) or a raid (10, 20 or 40)
+-- to RUIN Muster, where everyone signs up by role.
+function M:PlanRun(entry, when, size, isRaid)
     local mu = R:GetModule("Muster")
-    if not mu or not mu.Create then return self:Print("Install RUIN Muster to schedule raids.") end
-    if mu.CanPost and not mu:CanPost() then return self:Print("Only officers schedule raids (or switch on Muster's practice mode).") end
-    local need = RAID_NEED[size] or RAID_NEED[20]
-    return mu:Create(raid.name, when, { kind = "Raid", size = tostring(size), need = { need[1], need[2], need[3] },
-                                        desc = ("Joint %d-player %s, planned in Codex."):format(size, raid.name) })
+    if not mu or not mu.Create then return self:Print("Install RUIN Muster to schedule runs.") end
+    if mu.CanPost and not mu:CanPost() then return self:Print("Only officers schedule runs (or switch on Muster's practice mode).") end
+    if not entry then return end
+    if not isRaid then size = 5 end
+    local need = isRaid and (RAID_NEED[size] or RAID_NEED[20]) or { 1, 1, 3 }
+    return mu:Create(entry.name, when, { kind = isRaid and "Raid" or "Dungeon", size = tostring(size),
+                                         need = { need[1], need[2], need[3] },
+                                         desc = ("Joint %d-player %s, planned in Codex."):format(size, entry.name) })
 end
+
+function M:PlanRaid(raid, when, size) return self:PlanRun(raid, when, size, true) end
 
 ---------------------------------------------------------------------------
 -- Page
@@ -749,23 +756,6 @@ local function detailList(parent)
         child:SetHeight(math.max(10, y))
     end
     return obj
-end
-
-local function buildJournal(page)
-    ui.dungeons = W.List(page, 28, function(row)
-        row.btn = W.Button(row, "", 160)
-        row.btn:SetPoint("LEFT", 0, 0)
-    end, function(row, dg, i)
-        row.btn:SetText(dg.name)
-        if i == ui.selected then row.btn:LockHighlight() else row.btn:UnlockHighlight() end
-        row.btn:SetScript("OnClick", function() ui.selected = i; refreshPage() end)
-    end)
-    ui.dungeons.frame:SetPoint("TOPLEFT", 0, 0)
-    ui.dungeons.frame:SetPoint("BOTTOMLEFT", 0, 0)
-    ui.dungeons.frame:SetWidth(170)
-    ui.detail = detailList(page)
-    ui.detail.frame:SetPoint("TOPLEFT", 200, 0)
-    ui.detail.frame:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -24, 0)
 end
 
 local function specOptions()
@@ -1030,55 +1020,111 @@ local function buildBis(page)
     if ChatFrameUtil and ChatFrameUtil.InsertLink then pcall(hooksecurefunc, ChatFrameUtil, "InsertLink", insert) end
 end
 
-local function buildRaids(page)
-    ui.raids = W.List(page, 28, function(row)
-        row.btn = W.Button(row, "", 160)
+-- Journal: dungeons and raids behind a Dungeons / Raids switch. Pick one on
+-- the left; the right shows run planning (posted to RUIN Muster) and the
+-- entry's bosses and the drops RUIN members have looted there.
+local function journalEntries()
+    if ui.jmode == "Raids" then return ns.Raids or {}, ui.raid or 1 end
+    return ns.Dungeons or {}, ui.selected or 1
+end
+
+local function buildJournal(page)
+    ui.jmode = ui.jmode or "Dungeons"
+    ui.modeBtns = {}
+    for i, mode in ipairs({ "Dungeons", "Raids" }) do
+        local b = W.Button(page, mode, 82, function() ui.jmode = mode; refreshPage() end)
+        b:SetPoint("TOPLEFT", (i - 1) * 86, 0)
+        ui.modeBtns[mode] = b
+    end
+    ui.entries = W.List(page, 28, function(row)
+        row.btn = W.Button(row, "", 168)
         row.btn:SetPoint("LEFT", 0, 0)
-    end, function(row, r, i)
-        row.btn:SetText(r.name)
-        if i == ui.raid then row.btn:LockHighlight() else row.btn:UnlockHighlight() end
-        row.btn:SetScript("OnClick", function() ui.raid = i; ui.raidSize = r.size <= 20 and r.size or 20; refreshPage() end)
+    end, function(row, e, i)
+        local _, sel = journalEntries()
+        row.btn:SetText(e.name)
+        if i == sel then row.btn:LockHighlight() else row.btn:UnlockHighlight() end
+        row.btn:SetScript("OnClick", function()
+            if ui.jmode == "Raids" then
+                ui.raid = i
+                ui.raidSize = e.size <= 20 and e.size or 20
+            else
+                ui.selected = i
+            end
+            refreshPage()
+        end)
     end)
-    ui.raids.frame:SetPoint("TOPLEFT", 0, 0)
-    ui.raids.frame:SetPoint("BOTTOMLEFT", 0, 0)
-    ui.raids.frame:SetWidth(170)
+    ui.entries.frame:SetPoint("TOPLEFT", 0, -32)
+    ui.entries.frame:SetPoint("BOTTOMLEFT", 0, 0)
+    ui.entries.frame:SetWidth(176)
 
     local card = W.Card(page)
     card:SetPoint("TOPLEFT", 200, 0)
     card:SetPoint("RIGHT", page, "RIGHT", -4, 0)
     card:SetHeight(84)
-    local h = W.Header(card, "Plan a joint RUIN run")
-    h:SetPoint("TOPLEFT", 8, -6)
+    ui.planHeader = W.Header(card, "Plan a joint RUIN run")
+    ui.planHeader:SetPoint("TOPLEFT", 8, -6)
     local wl = W.Label(card, C.dim .. "Starts|r", "GameFontHighlightSmall")
     wl:SetPoint("TOPLEFT", 10, -32)
-    ui.raidWhen = W.EditBox(card, 130)
-    ui.raidWhen:SetPoint("LEFT", wl, "RIGHT", 6, 0)
-    ui.raidWhen:SetText(defaultWhen())
-    local size = W.Cycle(card, 90, { 10, 20, 40 }, function() return ui.raidSize end, function(v) ui.raidSize = v end, "Size: ")
-    size:SetPoint("LEFT", ui.raidWhen, "RIGHT", 8, 0)
-    ui.raidPost = W.Button(card, "Post in Muster", 120, function()
-        local raid = ns.Raids[ui.raid]
-        if raid and M:PlanRaid(raid, ui.raidWhen:GetText(), ui.raidSize) then refreshPage() end
+    ui.runWhen = W.EditBox(card, 130)
+    ui.runWhen:SetPoint("LEFT", wl, "RIGHT", 6, 0)
+    ui.runWhen:SetText(defaultWhen())
+    ui.raidSize = ui.raidSize or 20
+    ui.sizeBtn = W.Cycle(card, 96, { 10, 20, 40 }, function() return ui.raidSize end, function(v) ui.raidSize = v end, "Size: ")
+    ui.sizeBtn:SetPoint("LEFT", ui.runWhen, "RIGHT", 8, 0)
+    ui.sizeBtn.tipTitle = "How many players"
+    ui.sizeFixed = W.Label(card, C.dim .. "5 players|r", "GameFontHighlightSmall")
+    ui.sizeFixed:SetPoint("LEFT", ui.runWhen, "RIGHT", 12, 0)
+    ui.runPost = W.Button(card, "Post in Muster", 120, function()
+        local list, sel = journalEntries()
+        local entry = list[sel]
+        if entry and M:PlanRun(entry, ui.runWhen:GetText(), ui.raidSize, ui.jmode == "Raids") then refreshPage() end
     end)
-    ui.raidPost:SetPoint("LEFT", size, "RIGHT", 6, 0)
-    ui.raidRuns = W.Label(card, "", "GameFontHighlightSmall")
-    ui.raidRuns:SetPoint("TOPLEFT", 10, -56)
-    ui.raidRuns:SetPoint("RIGHT", card, "RIGHT", -8, 0)
-    ui.raidRuns:SetWordWrap(false)
+    ui.runPost:SetPoint("LEFT", ui.sizeBtn, "RIGHT", 6, 0)
+    ui.runs = W.Label(card, "", "GameFontHighlightSmall")
+    ui.runs:SetPoint("TOPLEFT", 10, -58)
+    ui.runs:SetPoint("RIGHT", card, "RIGHT", -8, 0)
+    ui.runs:SetWordWrap(false)
 
-    ui.raidDetail = detailList(page)
-    ui.raidDetail.frame:SetPoint("TOPLEFT", 200, -92)
-    ui.raidDetail.frame:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -24, 0)
+    ui.detail = detailList(page)
+    ui.detail.frame:SetPoint("TOPLEFT", 200, -92)
+    ui.detail.frame:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -24, 0)
+end
+
+local function refreshJournal()
+    local raids = ui.jmode == "Raids"
+    for mode, b in pairs(ui.modeBtns) do
+        if mode == ui.jmode then b:LockHighlight() else b:UnlockHighlight() end
+    end
+    local list, sel = journalEntries()
+    ui.entries:SetItems(list)
+    local entry = list[sel] or list[1]
+    ui.detail:SetItems(entry and journalLines(entry, raids) or {})
+    ui.sizeBtn:SetShown(raids)
+    ui.sizeFixed:SetShown(not raids)
+    ui.runPost:ClearAllPoints()
+    ui.runPost:SetPoint("LEFT", raids and ui.sizeBtn or ui.sizeFixed, "RIGHT", raids and 6 or 14, 0)
+    if raids then ui.sizeBtn.Refresh() end
+    local mu = R:GetModule("Muster")
+    ui.runPost:SetEnabled(mu ~= nil)
+    local runs = {}
+    if mu and mu.GetUpcoming and entry then
+        for _, ev in ipairs(mu:GetUpcoming()) do
+            if ev.title:lower():find(entry.name:lower(), 1, true) then
+                runs[#runs + 1] = ("%s (%d signed)"):format(date("%a %d %b %H:%M", ev.at), ev.signed)
+            end
+        end
+    end
+    ui.runs:SetText(not mu and (C.dim .. "Install RUIN Muster to schedule runs and take sign-ups.|r")
+        or (#runs > 0 and (C.good .. "Upcoming: |r" .. table.concat(runs, ",  ")) or (C.dim .. "No run scheduled yet.|r")))
 end
 
 local function buildPage(panel)
     ui.panel = panel
-    ui.tabs = W.SubTabs(panel, { "Gear Path", "Journal", "Best-in-slot", "Macros", "Raids" }, function() refreshPage() end)
+    ui.tabs = W.SubTabs(panel, { "Gear Path", "Best-in-slot", "Macros", "Journal" }, function() refreshPage() end)
     buildGearPath(ui.tabs.pages[1])
-    buildJournal(ui.tabs.pages[2])
-    buildBis(ui.tabs.pages[3])
-    if ns.Macros then ns.Macros.Build(ui.tabs.pages[4]) end
-    buildRaids(ui.tabs.pages[5])
+    buildBis(ui.tabs.pages[2])
+    if ns.Macros then ns.Macros.Build(ui.tabs.pages[3]) end
+    buildJournal(ui.tabs.pages[4])
 
     refreshPage = function()
         if not ui.panel:IsVisible() then return end
@@ -1086,10 +1132,6 @@ local function buildPage(panel)
         if tab == 1 then
             refreshGearPath()
         elseif tab == 2 then
-            ui.dungeons:SetItems(ns.Dungeons)
-            local dg = ns.Dungeons[ui.selected] or ns.Dungeons[1]
-            ui.detail:SetItems(dg and journalLines(dg, false) or {})
-        elseif tab == 3 then
             ui.bisClass = ui.bisClass or myClass() or "WARRIOR"
             ui.bisSpec = ui.bisSpec or mySpec() or ns.SpecOrder[ui.bisClass][1]
             ui.bisBracket = ui.bisBracket or bracketFor()
@@ -1109,24 +1151,10 @@ local function buildPage(panel)
                 (ui.bisEditing and "Shift-click an item into a box, add its source and minutes (quest 15 Duskwood), press Set, then Send to RUIN."
                     or officer and "No list yet for this spec and level range. Press Edit list to make one." or "RUIN's officers haven't made a list for this spec and level range yet.")) .. "|r")
             ui.bisList:SetItems(BIS_SLOTS)
-        elseif tab == 4 then
+        elseif tab == 3 then
             if ns.Macros then ns.Macros.Refresh() end
-        elseif tab == 5 then
-            ui.raids:SetItems(ns.Raids)
-            local raid = ns.Raids[ui.raid] or ns.Raids[1]
-            ui.raidDetail:SetItems(raid and journalLines(raid, true) or {})
-            local mu = R:GetModule("Muster")
-            ui.raidPost:SetEnabled(mu ~= nil)
-            local runs = {}
-            if mu and mu.GetUpcoming then
-                for _, ev in ipairs(mu:GetUpcoming()) do
-                    if raid and ev.title:lower():find(raid.name:lower(), 1, true) then
-                        runs[#runs + 1] = ("%s (%d signed)"):format(date("%a %d %b %H:%M", ev.at), ev.signed)
-                    end
-                end
-            end
-            ui.raidRuns:SetText(not mu and (C.dim .. "Install RUIN Muster to schedule runs and take sign-ups.|r")
-                or (#runs > 0 and (C.good .. "Upcoming: |r" .. table.concat(runs, ",  ")) or (C.dim .. "No run scheduled yet.|r")))
+        elseif tab == 4 then
+            refreshJournal()
         end
     end
     panel:SetScript("OnShow", function() refreshPage() end)
@@ -1165,8 +1193,8 @@ function M:OnEnable()
     -- Opening Codex inside a dungeon jumps to that dungeon's entry.
     self:RegisterEvent("PLAYER_ENTERING_WORLD", function()
         local inst = GetInstanceInfo and GetInstanceInfo()
-        for i, dg in ipairs(ns.Dungeons) do if dg.name == inst then ui.selected = i end end
-        for i, r in ipairs(ns.Raids) do if r.name == inst then ui.raid = i end end
+        for i, dg in ipairs(ns.Dungeons) do if dg.name == inst then ui.selected = i; ui.jmode = "Dungeons" end end
+        for i, r in ipairs(ns.Raids) do if r.name == inst then ui.raid = i; ui.jmode = "Raids" end end
     end)
 end
 
@@ -1181,9 +1209,10 @@ SlashCmdList.RUINCODEX = function(msg)
     local cmd, rest = msg:match("^(%S*)%s*(.*)$")
     local tab = 1
     if cmd == "upgrades" or cmd == "path" or cmd == "gear" then tab = 1
-    elseif cmd == "journal" then tab = 2
-    elseif cmd == "bis" then tab = 3
-    elseif cmd == "macros" or cmd == "macro" then tab = 4
+    elseif cmd == "journal" or cmd == "dungeons" then tab = 4; if cmd == "dungeons" then ui.jmode = "Dungeons" end
+    elseif cmd == "raids" or cmd == "raid" then tab = 4; ui.jmode = "Raids"
+    elseif cmd == "bis" then tab = 2
+    elseif cmd == "macros" or cmd == "macro" then tab = 3
     elseif cmd == "spec" then
         local pick = "Auto"
         for _, s in ipairs(ns.SpecOrder[myClass() or ""] or {}) do if s:lower() == rest then pick = s end end
@@ -1192,10 +1221,10 @@ SlashCmdList.RUINCODEX = function(msg)
         return
     elseif msg ~= "" then
         for i, dg in ipairs(ns.Dungeons) do
-            if dg.name:lower():find(msg, 1, true) or dg.id == msg then ui.selected = i; tab = 2 end
+            if dg.name:lower():find(msg, 1, true) or dg.id == msg then ui.selected = i; ui.jmode = "Dungeons"; tab = 4 end
         end
         for i, r in ipairs(ns.Raids) do
-            if r.name:lower():find(msg, 1, true) or r.id == msg then ui.raid = i; tab = 5 end
+            if r.name:lower():find(msg, 1, true) or r.id == msg then ui.raid = i; ui.jmode = "Raids"; tab = 4 end
         end
     end
     M:OpenTab()

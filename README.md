@@ -5,15 +5,14 @@ A dungeon and raid journal, drops learned by the whole org, an upgrade line on e
 Part of the **RUIN Gaming Companion App**. Requires **RUIN Core** (0.3.7 or later). With **RUIN Muster** installed, raids planned in Codex are posted as Muster events.
 
 ## The experience
-- **Where it lives:** the Codex tab in the RUIN window (Gear Path, Journal, Best-in-slot, Macros, Raids), item tooltips, and `/codex` (`/codex macros` opens the macro page).
+- **Where it lives:** the Codex tab in the RUIN window (Gear Path, Best-in-slot, Macros, Journal), item tooltips, and `/codex` (`/codex macros` opens the macro page).
 - **Macros:** 113 ready-made macros for every class and spec plus shared ones for all classes, filtered by class, spec, tag and search. *Add to account* / *Add to character* creates the macro (outside combat; in combat it waits), fills in food, drink and potions from your bags, flags spells you don't know yet, and shows your free slots. Anything that talks in chat asks first, and every macro is checked (255 characters, no `/run` or `/script`). *Copy text* is there when the client can't create macros.
 - **Gear Path:** every known upgrade for your class and spec, ranked by progress per minute: how much it helps × how sure RUIN is × how relevant it is ÷ the minutes it takes. Each row shows the slot, where it comes from, the time and a Quick (under 30 min), Medium (under an hour) or Long tag. Switch Solo and Group on or off, sort by time efficient, biggest upgrade or quickest, and see how many of your bracket's RUIN best-in-slot items you have plus the next upgrade. Times marked "~" are estimates by source kind; times an officer set are shown plain. Hover a row for the numbers behind its rank.
-- **Journal:** each dungeon's level range, location, bosses with a one-line tip, and every drop RUIN members have looted there. Inside a dungeon, Codex opens on it.
+- **Journal:** switch between *Dungeons* and *Raids*. Each entry shows its level range or size, location, bosses with a one-line tip, and every drop RUIN members have looted there; inside a dungeon or raid, Codex opens on it. *Plan a joint RUIN run* posts it to Muster: a 5-player run for a dungeon, or a 10, 20 or 40-player run for a raid, with role needs for that size.
 - **Tooltips:** "Codex: +18% upgrade over your chest (Fury)", "RUIN best-in-slot for Fury (45-59)" and "drops in The Deadmines (looted 3x by RUIN)".
 - **Spec weights:** items are scored with weights for your spec, covering Forever's Haste and Expertise and its single Hit and Crit stats. The spec is detected from your talents; override it on the Upgrades page or with `/codex spec <name|auto>`.
 - **Upgrades:** the best known upgrades you can use within 3 levels, from RUIN's loot and best-in-slot lists, with where each comes from.
 - **Best-in-slot:** everyone sees RUIN's list for a class, spec and level range. Officers press *Edit list*, pick class, spec and level bracket, shift-click items into each slot (optionally followed by where it comes from and minutes, e.g. `quest 15 Duskwood` or `dungeon 45 Deadmines`), and press *Send to RUIN*. Lists can be exported and imported as strings.
-- **Raids:** boss tips and learned loot for each raid, and a planner that posts a joint 10, 20 or 40-player run to Muster with role needs for that size.
 
 ## What it shares with RUIN
 Items you loot inside a dungeon or raid (item and instance), and best-in-slot lists officers send.
