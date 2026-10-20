@@ -6,6 +6,15 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
+## 0.3.8 — 2026-10-19
+
+1 change since 0.3.7 (needs RUIN Core 0.3.12):
+
+1. **Tidier pages, in Codex's color.**
+   - Journal and Raids: long boss tips no longer run into the next line; each line takes the room it needs.
+   - Best-in-slot: everyone sees a clean read-only list. Officers press *Edit list* to get the item boxes, Import and Send to RUIN.
+   - Class names read Warrior, Paladin... instead of WARRIOR, and the macro search box has its hint inside it.
+
 ## 0.3.7 — 2026-10-19
 
 1 change since 0.3.6:

@@ -2,7 +2,7 @@
 ## Title: |cffe6b862RUIN|r Codex
 ## Notes: Dungeon journal, gear path, class macros you can add in one click, drops learned by the whole org, and an upgrade line on item tooltips.
 ## Author: RUIN
-## Version: 0.3.7
+## Version: 0.3.8
 ## Dependencies: RUIN_Core
 ## SavedVariables: RUIN_CodexDB
 ## IconTexture: Interface\Icons\INV_Misc_Book_09

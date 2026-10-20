@@ -8,7 +8,7 @@
 -- confirmation; the exact text is always shown before it is added.
 local ADDON, ns = ...
 local R = RUIN_API
-if not R or (R.apiLevel or 1) < 4 then return end
+if not R or (R.apiLevel or 1) < 6 then return end
 local W = R.Widgets
 local C = W.COLORS
 
@@ -527,13 +527,15 @@ local function buildFilters(page)
     local h = W.Header(page, "Macros")
     h:SetPoint("TOPLEFT", 0, -2)
     local opts = classOptions()
-    ui.clsBtn = W.Cycle(page, 100, opts, function() return ui.class end, function(v)
+    ui.clsBtn = W.Cycle(page, 116, opts, function() return ui.class end, function(v)
         ui.class = v
         ui.spec = "All specs"
         refresh()
     end)
+    ui.clsBtn.format = ns.ClassLabel
+    ui.clsBtn.tipTitle = "Show macros for a class (All classes = shared ones)"
     ui.clsBtn:SetPoint("TOPLEFT", 64, 2)
-    ui.specBtn = W.Button(page, "", 124, nil)
+    ui.specBtn = W.MarkChoice(W.Button(page, "", 134, nil))
     ui.specBtn:SetPoint("LEFT", ui.clsBtn, "RIGHT", 4, 0)
     ui.specBtn:SetScript("OnClick", function(_, mouse)
         local list = specOptions()
@@ -547,10 +549,8 @@ local function buildFilters(page)
     for _, t in ipairs(TAGS) do tagOpts[#tagOpts + 1] = t end
     ui.tagBtn = W.Cycle(page, 118, tagOpts, function() return ui.tag end, function(v) ui.tag = v; refresh() end)
     ui.tagBtn:SetPoint("LEFT", ui.specBtn, "RIGHT", 4, 0)
-    ui.searchBox = W.EditBox(page, 110, function(text) ui.search = text or ""; refresh() end)
-    ui.searchBox:SetPoint("LEFT", ui.tagBtn, "RIGHT", 12, 0)
-    ui.searchHint = W.Label(page, C.dim .. "search|r", "GameFontHighlightSmall")
-    ui.searchHint:SetPoint("LEFT", ui.searchBox, "RIGHT", 6, 0)
+    ui.searchBox = W.EditBox(page, 150, function(text) ui.search = text or ""; refresh() end, "Search macros")
+    ui.searchBox:SetPoint("LEFT", ui.tagBtn, "RIGHT", 8, 0)
 
     ui.info = W.Label(page, "", "GameFontHighlightSmall")
     ui.info:SetPoint("TOPLEFT", 0, -26)

@@ -12,7 +12,7 @@ Part of the **RUIN Gaming Companion App**. Requires **RUIN Core** (0.3.7 or late
 - **Tooltips:** "Codex: +18% upgrade over your chest (Fury)", "RUIN best-in-slot for Fury (45-59)" and "drops in The Deadmines (looted 3x by RUIN)".
 - **Spec weights:** items are scored with weights for your spec, covering Forever's Haste and Expertise and its single Hit and Crit stats. The spec is detected from your talents; override it on the Upgrades page or with `/codex spec <name|auto>`.
 - **Upgrades:** the best known upgrades you can use within 3 levels, from RUIN's loot and best-in-slot lists, with where each comes from.
-- **Best-in-slot:** officers pick class, spec and level bracket, shift-click items into each slot (optionally followed by where it comes from and minutes, e.g. `quest 15 Duskwood` or `dungeon 45 Deadmines`), and press *Send to RUIN*. Lists can be exported and imported as strings.
+- **Best-in-slot:** everyone sees RUIN's list for a class, spec and level range. Officers press *Edit list*, pick class, spec and level bracket, shift-click items into each slot (optionally followed by where it comes from and minutes, e.g. `quest 15 Duskwood` or `dungeon 45 Deadmines`), and press *Send to RUIN*. Lists can be exported and imported as strings.
 - **Raids:** boss tips and learned loot for each raid, and a planner that posts a joint 10, 20 or 40-player run to Muster with role needs for that size.
 
 ## What it shares with RUIN

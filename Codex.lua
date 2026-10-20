@@ -8,14 +8,14 @@
 -- planning with RUIN Muster.
 local ADDON, ns = ...
 local R = RUIN_API
-if not R or (R.apiLevel or 1) < 4 then
-    print("|cff54b7d9[RUIN]|r Codex needs a newer RUIN Core (0.3.7 or later).")
+if not R or (R.apiLevel or 1) < 6 then
+    print("|cff54b7d9[RUIN]|r Codex needs a newer RUIN Core (0.3.12 or later).")
     return
 end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Codex", { version = "0.3.7" })
+local M = R:RegisterModule("Codex", { version = "0.3.8" })
 ns.Codex = M
 
 local DEFAULTS = { drops = {}, tooltip = true, spec = "Auto", bis = {},
@@ -23,6 +23,15 @@ local DEFAULTS = { drops = {}, tooltip = true, spec = "Auto", bis = {},
                    installed = {} }
 local BRACKETS = { "1-29", "30-44", "45-59", "60" }
 local CLASSES = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "WARLOCK", "DRUID" }
+
+-- "WARRIOR" -> "Warrior" (the game's own name when it has one).
+function ns.ClassLabel(class)
+    if class == "SHARED" then return "All classes" end
+    local names = LOCALIZED_CLASS_NAMES_MALE
+    if names and names[class] then return names[class] end
+    class = tostring(class or "")
+    return class:sub(1, 1) .. class:sub(2):lower()
+end
 local RAID_NEED = { [10] = { 2, 3, 5 }, [20] = { 3, 5, 12 }, [40] = { 5, 10, 25 } }
 local db
 local ui = { selected = 1, raid = 1, raidSize = 20 }
@@ -694,17 +703,52 @@ local function journalLines(dg, isRaid)
     return lines
 end
 
+-- Journal text: one line per entry, each as tall as its wrapped text, in a
+-- scrolling column (item lines show the item's tooltip on hover).
 local function detailList(parent)
-    local l = W.List(parent, 28, function(row)
-        row.text = W.Label(row, "")
-        row.text:SetPoint("TOPLEFT", 4, -2)
-        row.text:SetPoint("RIGHT", row, "RIGHT", -4, 0)
-        row.text:SetJustifyV("TOP")
-    end, function(row, line)
-        row.text:SetText(line[1])
-        row.link = line.link
-    end)
-    return l
+    local sf = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
+    local child = CreateFrame("Frame", nil, sf)
+    child:SetSize(10, 10)
+    sf:SetScrollChild(child)
+    local obj = { frame = sf, rows = {} }
+    function obj:SetItems(lines)
+        local width = math.max(120, (sf:GetWidth() or 400) - 4)
+        child:SetWidth(width)
+        local y = 0
+        for i, line in ipairs(lines) do
+            local row = self.rows[i]
+            if not row then
+                row = CreateFrame("Frame", nil, child)
+                row.text = W.Label(row, "")
+                row.text:SetPoint("TOPLEFT", 4, 0)
+                row.text:SetJustifyV("TOP")
+                row:EnableMouse(true)
+                row:SetScript("OnEnter", function(self)
+                    if self.link and GameTooltip then
+                        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                        pcall(GameTooltip.SetHyperlink, GameTooltip, self.link)
+                        GameTooltip:Show()
+                    end
+                end)
+                row:SetScript("OnLeave", function(self) if self.link and GameTooltip then GameTooltip:Hide() end end)
+                self.rows[i] = row
+            end
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", child, "TOPLEFT", 0, -y)
+            row:SetPoint("RIGHT", child, "RIGHT", 0, 0)
+            row.text:SetWidth(width - 8)
+            row.text:SetText(line[1])
+            row.link = line.link
+            local blank = line[1] == " "
+            local h = blank and 6 or math.max(14, row.text:GetStringHeight() or 14)
+            row:SetHeight(h)
+            row:Show()
+            y = y + h + (blank and 0 or 6)
+        end
+        for i = #lines + 1, #self.rows do self.rows[i]:Hide() end
+        child:SetHeight(math.max(10, y))
+    end
+    return obj
 end
 
 local function buildJournal(page)
@@ -890,13 +934,14 @@ local function buildBis(page)
     ui.bisClass, ui.bisSpec, ui.bisBracket = nil, nil, nil
     local h = W.Header(page, "Best-in-slot")
     h:SetPoint("TOPLEFT", 0, -2)
-    ui.bisClassBtn = W.Cycle(page, 100, CLASSES, function() return ui.bisClass end, function(v)
+    ui.bisClassBtn = W.Cycle(page, 110, CLASSES, function() return ui.bisClass end, function(v)
         ui.bisClass = v
         ui.bisSpec = ns.SpecOrder[v][1]
         refreshPage()
     end)
+    ui.bisClassBtn.format = ns.ClassLabel
     ui.bisClassBtn:SetPoint("TOPLEFT", 90, 2)
-    ui.bisSpecBtn = W.Button(page, "", 130, nil)
+    ui.bisSpecBtn = W.MarkChoice(W.Button(page, "", 130, nil))
     ui.bisSpecBtn:SetPoint("LEFT", ui.bisClassBtn, "RIGHT", 4, 0)
     ui.bisSpecBtn:SetScript("OnClick", function(_, mouse)
         local opts = ns.SpecOrder[ui.bisClass] or {}
@@ -906,12 +951,16 @@ local function buildBis(page)
         ui.bisSpec = opts[idx]
         refreshPage()
     end)
-    ui.bisBracketBtn = W.Cycle(page, 80, BRACKETS, function() return ui.bisBracket end, function(v) ui.bisBracket = v; refreshPage() end)
+    ui.bisBracketBtn = W.Cycle(page, 110, BRACKETS, function() return ui.bisBracket end, function(v) ui.bisBracket = v; refreshPage() end, "Levels ")
     ui.bisBracketBtn:SetPoint("LEFT", ui.bisSpecBtn, "RIGHT", 4, 0)
+    -- Officers edit lists; everyone else just reads them.
+    ui.bisEdit = W.Button(page, "Edit list", 84, function() ui.bisEditing = not ui.bisEditing; refreshPage() end)
+    ui.bisEdit:SetPoint("TOPRIGHT", page, "TOPRIGHT", 0, 2)
     ui.bisSend = W.Button(page, "Send to RUIN", 110, function() M:SendBis(ui.bisClass, ui.bisSpec, ui.bisBracket) end)
-    ui.bisSend:SetPoint("TOPRIGHT", page, "TOPRIGHT", 0, 2)
+    ui.bisSend:SetPoint("RIGHT", ui.bisEdit, "LEFT", -4, 0)
     local exp = W.Button(page, "Export", 64, function() M:ExportBis(ui.bisClass, ui.bisSpec, ui.bisBracket) end)
     exp:SetPoint("RIGHT", ui.bisSend, "LEFT", -4, 0)
+    ui.bisExport = exp
     ui.bisImport = W.Button(page, "Import", 64, function()
         R:ShowText("Import best-in-slot list", "Paste a RUIN best-in-slot string (RUIN-BIS1:...) and press OK.", "", function(t)
             M:ImportBis(t); refreshPage()
@@ -948,10 +997,11 @@ local function buildBis(page)
         row.text:SetText(id and (itemText(id) .. (src and (C.dim .. "  ·  " .. sourceText(src)
             .. (src.m and (" " .. W.Duration(src.m * 60)) or "") .. "|r") or "")) or (C.dim .. "-|r"))
         row.link = link
-        local officer = R:IsOfficer() or not R:IsConnected()
-        row.box:SetShown(officer)
-        row.set:SetShown(officer)
-        row.clear:SetShown(officer and id ~= nil)
+        local editing = ui.bisEditing and (R:IsOfficer() or not R:IsConnected())
+        row.box:SetShown(editing)
+        row.set:SetShown(editing)
+        row.clear:SetShown(editing and id ~= nil)
+        row.text:SetPoint("RIGHT", row, "RIGHT", editing and -250 or -6, 0)
         row.set:SetScript("OnClick", function()
             local text = row.box:GetText() or ""
             -- "[item] quest 15 Duskwood": the item, then where it comes from and minutes
@@ -999,10 +1049,12 @@ local function buildRaids(page)
     card:SetHeight(84)
     local h = W.Header(card, "Plan a joint RUIN run")
     h:SetPoint("TOPLEFT", 8, -6)
+    local wl = W.Label(card, C.dim .. "Starts|r", "GameFontHighlightSmall")
+    wl:SetPoint("TOPLEFT", 10, -32)
     ui.raidWhen = W.EditBox(card, 130)
-    ui.raidWhen:SetPoint("TOPLEFT", 12, -28)
+    ui.raidWhen:SetPoint("LEFT", wl, "RIGHT", 6, 0)
     ui.raidWhen:SetText(defaultWhen())
-    local size = W.Cycle(card, 90, { 10, 20, 40 }, function() return ui.raidSize end, function(v) ui.raidSize = v end, "Size ")
+    local size = W.Cycle(card, 90, { 10, 20, 40 }, function() return ui.raidSize end, function(v) ui.raidSize = v end, "Size: ")
     size:SetPoint("LEFT", ui.raidWhen, "RIGHT", 8, 0)
     ui.raidPost = W.Button(card, "Post in Muster", 120, function()
         local raid = ns.Raids[ui.raid]
@@ -1046,11 +1098,16 @@ local function buildPage(panel)
             ui.bisBracketBtn.Refresh()
             local list = db.bis[bisKey(ui.bisClass, ui.bisSpec, ui.bisBracket)]
             local officer = R:IsOfficer() or not R:IsConnected()
-            ui.bisSend:SetShown(R:IsOfficer())
-            ui.bisImport:SetShown(officer)
+            if not officer then ui.bisEditing = false end
+            ui.bisEdit:SetShown(officer)
+            ui.bisEdit:SetText(ui.bisEditing and "Done" or "Edit list")
+            ui.bisSend:SetShown(R:IsOfficer() and ui.bisEditing)
+            ui.bisImport:SetShown(officer and ui.bisEditing)
+            ui.bisExport:SetShown(list ~= nil)
             ui.bisInfo:SetText(C.dim .. (list and list.t and ("Last changed by %s, %s%s."):format(tostring(list.by), W.Ago(GetServerTime() - list.t),
                 list.sent and "" or (officer and "  Not sent to RUIN yet." or "")) or
-                (officer and "No list yet. Shift-click an item into a box, add its source and minutes (quest 15 Duskwood), press Set, then Send to RUIN." or "No RUIN list for this spec yet.")) .. "|r")
+                (ui.bisEditing and "Shift-click an item into a box, add its source and minutes (quest 15 Duskwood), press Set, then Send to RUIN."
+                    or officer and "No list yet for this spec and level range. Press Edit list to make one." or "RUIN's officers haven't made a list for this spec and level range yet.")) .. "|r")
             ui.bisList:SetItems(BIS_SLOTS)
         elseif tab == 4 then
             if ns.Macros then ns.Macros.Refresh() end
