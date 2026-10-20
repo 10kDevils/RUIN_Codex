@@ -15,7 +15,7 @@ end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Codex", { version = "0.3.6" })
+local M = R:RegisterModule("Codex", { version = "0.3.7" })
 ns.Codex = M
 
 local DEFAULTS = { drops = {}, tooltip = true, spec = "Auto", bis = {},
