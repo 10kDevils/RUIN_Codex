@@ -7,14 +7,14 @@
 -- addon RUIN may work with later.
 local ADDON, ns = ...
 local R = RUIN_API
-if not R or (R.apiLevel or 1) < 8 then
-    print("|cff54b7d9[RUIN]|r Codex needs a newer RUIN Core (0.3.15 or later).")
+if not R or (R.apiLevel or 1) < 9 then
+    print("|cff54b7d9[RUIN]|r Codex needs a newer RUIN Core (0.3.16 or later).")
     return
 end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Codex", { version = "0.3.10" })
+local M = R:RegisterModule("Codex", { version = "0.3.11" })
 ns.Codex = M
 
 local DEFAULTS = { drops = {}, tooltip = true, spec = "Auto", installed = {} }
@@ -249,6 +249,7 @@ end
 
 local function onLoot(_, text, looter)
     if type(text) ~= "string" or (issecretvalue and issecretvalue(text)) then return end
+    R.Items.RememberLinks(text)
     if not IsInInstance then return end
     local inInstance, kind = IsInInstance()
     if not inInstance or (kind ~= "party" and kind ~= "raid") then return end
@@ -307,9 +308,10 @@ function M:PlanRaid(raid, when, size) return self:PlanRun(raid, when, size, true
 ---------------------------------------------------------------------------
 -- Page
 ---------------------------------------------------------------------------
-local function itemText(id)
-    local name, link = itemInfo(id)
-    return link or name or ("item #" .. id)
+-- The item's link or name (never a bare ID): Core remembers names it has
+-- seen, and a loot list's own name stands in until the game sends the item.
+local function itemText(id, fallback)
+    return R.Items.Text(id, fallback)
 end
 
 local function chanceText(it)
@@ -342,7 +344,7 @@ local function journalLines(dg, isRaid)
         lines[#lines + 1] = { C.white .. b.name .. "|r" .. (b.tip and ("  " .. C.dim .. b.tip .. "|r") or "") }
         for _, it in ipairs(b.items) do
             local _, link = itemInfo(it.id)
-            lines[#lines + 1] = { "    " .. C.dim .. "-|r " .. itemText(it.id) .. chanceText(it) .. seenText(seen, it.id), link = link }
+            lines[#lines + 1] = { "    " .. C.dim .. "-|r " .. itemText(it.id, it.name) .. chanceText(it) .. seenText(seen, it.id), link = link }
         end
         if loot and #b.items == 0 then lines[#lines + 1] = { "    " .. C.dim .. "- no list for this boss yet|r" } end
     end
@@ -351,7 +353,7 @@ local function journalLines(dg, isRaid)
         lines[#lines + 1] = { C.gold .. "Other drops inside|r" }
         for _, it in ipairs(loot.trash) do
             local _, link = itemInfo(it.id)
-            lines[#lines + 1] = { "    " .. C.dim .. "-|r " .. itemText(it.id) .. chanceText(it) .. seenText(seen, it.id), link = link }
+            lines[#lines + 1] = { "    " .. C.dim .. "-|r " .. itemText(it.id, it.name) .. chanceText(it) .. seenText(seen, it.id), link = link }
         end
     end
     -- what RUIN looted that no list has
@@ -592,10 +594,10 @@ function M:OnEnable()
 
     -- Item names arrive from the server a moment after they're first asked for.
     local pending = false
-    self:RegisterEvent("GET_ITEM_INFO_RECEIVED", function()
+    R:Subscribe("ITEMS_LOADED", function()
         if pending then return end
         pending = true
-        C_Timer.After(0.5, function() pending = false; refreshPage() end)
+        C_Timer.After(0.2, function() pending = false; refreshPage() end)
     end)
 
     -- Opening Codex inside a dungeon jumps to that dungeon's entry.

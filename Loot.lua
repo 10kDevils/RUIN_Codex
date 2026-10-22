@@ -11,6 +11,7 @@
 --       bosses = {                                 -- in kill order
 --           { "Rhahk'Zor", { 5187, 872 } },        -- boss name, then item IDs
 --           { "Edwin VanCleef", { 5193, { 5191, 18 }, 10399 } },   -- { itemID, drop chance % }
+--           { "Gilnid", { { 1156, name = "Lavishly Jeweled Ring" } } },   -- name: shown until the game sends the item
 --       },
 --       trash = { 1156 },                          -- optional: drops from anything inside
 --   }
@@ -33,7 +34,9 @@ local function cleanItem(e)
         if not item then return nil end
         local chance = tonumber(e[2] or e.chance)
         if chance and chance > 0 and chance <= 100 then item.chance = chance end
-        if type(e[3] or e.note) == "string" then item.note = (e[3] or e.note):gsub("|", ""):sub(1, 40) end
+        local name = e.name or e[3]
+        if type(name) == "string" and name ~= "" then item.name = name:gsub("|", ""):sub(1, 60) end
+        if type(e.note) == "string" then item.note = e.note:gsub("|", ""):sub(1, 40) end
         return item
     end
     return nil

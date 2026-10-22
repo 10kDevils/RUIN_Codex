@@ -2,7 +2,7 @@
 
 Class macros you can add in one click, a reference of macro commands, a dungeon and raid journal with boss loot and the drops RUIN members loot, and an upgrade line on every item tooltip scored for your spec.
 
-Part of the **RUIN Gaming Companion App**. Requires **RUIN Core** (0.3.15 or later). With **RUIN Muster** installed, runs planned in Codex are posted as Muster events.
+Part of the **RUIN Gaming Companion App**. Requires **RUIN Core** (0.3.16 or later). With **RUIN Muster** installed, runs planned in Codex are posted as Muster events.
 
 ## The experience
 - **Where it lives:** the Codex tab in the RUIN window (Macros, Journal), item tooltips, and `/codex` (`/codex macros`, `/codex commands`, `/codex journal`, `/codex raids`, `/codex <dungeon or raid>`).
@@ -20,6 +20,7 @@ ns.AddLoot("dm", {                                   -- the Journal entry's id o
     verified = false,                                -- true once checked on WoW Forever
     bosses = {
         { "Rhahk'Zor", { 5187, 872 } },              -- boss, then item IDs
+        { "Sneed", { { 5194, name = "Taskmaster Axe" } } },   -- a name shows until the game sends the item
         { "Edwin VanCleef", { 5193, { 5191, 18 } } },   -- { item ID, drop chance % }
     },
     trash = { 1156 },                                -- optional: drops from anything inside

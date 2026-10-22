@@ -16,15 +16,15 @@ ns.AddLoot("dm", {
     source = "WoW Classic loot tables (sample, not yet checked on Forever)",
     verified = false,
     bosses = {
-        { "Rhahk'Zor", { 5187, 872 } },                    -- Rhahk'Zor's Hammer, Rockslicer
-        { "Sneed's Shredder", { 2169 } },                 -- Buzzer Blade
-        { "Sneed", { 5194, 5195 } },                       -- Taskmaster Axe, Gold-flecked Gloves
-        { "Gilnid", { 1156, 5199 } },                      -- Lavishly Jeweled Ring, Smelting Pants
-        { "Mr. Smite", { 7230, 5196, 5192 } },             -- Smite's Mighty Hammer, Smite's Reaver, Thief's Blade
-        { "Captain Greenskin", { 5201 } },                 -- Emberstone Staff
-        { "Edwin VanCleef", { 5193, 5191, 10399, 5202 } }, -- Cape of the Brotherhood, Cruel Barb,
-                                                           -- Blackened Defias Armor, Corsair's Overshirt
-        { "Cookie", { 5197, 5198 } },                      -- Cookie's Tenderizer, Cookie's Stirring Rod
+        { "Rhahk'Zor", { { 5187, name = "Rhahk'Zor's Hammer" }, { 872, name = "Rockslicer" } } },
+        { "Sneed's Shredder", { { 2169, name = "Buzzer Blade" } } },
+        { "Sneed", { { 5194, name = "Taskmaster Axe" }, { 5195, name = "Gold-flecked Gloves" } } },
+        { "Gilnid", { { 1156, name = "Lavishly Jeweled Ring" }, { 5199, name = "Smelting Pants" } } },
+        { "Mr. Smite", { { 7230, name = "Smite's Mighty Hammer" }, { 5196, name = "Smite's Reaver" }, { 5192, name = "Thief's Blade" } } },
+        { "Captain Greenskin", { { 5201, name = "Emberstone Staff" } } },
+        { "Edwin VanCleef", { { 5193, name = "Cape of the Brotherhood" }, { 5191, name = "Cruel Barb" },
+                              { 10399, name = "Blackened Defias Armor" }, { 5202, name = "Corsair's Overshirt" } } },
+        { "Cookie", { { 5197, name = "Cookie's Tenderizer" }, { 5198, name = "Cookie's Stirring Rod" } } },
     },
 })
 
@@ -34,7 +34,7 @@ ns.AddLoot("dm", {
 --     source = "RUIN members' loot, Forever beta 1.60.1",
 --     verified = true,
 --     bosses = {
---         { "Faldrim Anvilmar", { 000000, 000000 } },
+--         { "Faldrim Anvilmar", { { 000000, name = "Item name" }, 000000 } },
 --         { "Durgen Dirgehammer", { 000000, { 000000, 20 } } },
 --     },
 -- })

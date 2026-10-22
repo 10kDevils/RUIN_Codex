@@ -6,6 +6,12 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
+## 0.3.11 — 2026-10-22
+
+1 change since 0.3.10 (needs RUIN Core 0.3.16):
+
+1. Items in the Journal always show their name, never "item #1234": the game is asked for each item, names seen before are remembered, and loot data files can give names (`{ 5187, name = "Rhahk'Zor's Hammer" }`; the Deadmines sample now does) that show until the game sends the item.
+
 ## 0.3.10 — 2026-10-21
 
 4 changes since 0.3.9 (needs RUIN Core 0.3.15):
