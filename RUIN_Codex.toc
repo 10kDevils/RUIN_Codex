@@ -1,8 +1,8 @@
 ## Interface: 16001, 120105
 ## Title: |cffe6b862RUIN|r Codex
-## Notes: Dungeon journal, gear path, class macros you can add in one click, drops learned by the whole org, and an upgrade line on item tooltips.
+## Notes: Class macros you can add in one click, a macro command reference, a dungeon and raid journal with boss loot, and an upgrade line on item tooltips.
 ## Author: RUIN
-## Version: 0.3.9
+## Version: 0.3.10
 ## Dependencies: RUIN_Core
 ## SavedVariables: RUIN_CodexDB
 ## IconTexture: Interface\Icons\INV_Misc_Book_09
@@ -10,7 +10,11 @@
 ## Category: RUIN Gaming Companion App
 
 Dungeons.lua
+Loot.lua
+LootSample.lua
 Weights.lua
+ItemStats.lua
 Codex.lua
 MacroSeed.lua
+MacroCommands.lua
 Macros.lua

@@ -22,7 +22,9 @@ local TAG_ORDER = {}
 for i, t in ipairs(TAGS) do TAG_ORDER[t] = i end
 
 local M            -- the Codex module, set by Mac.Init
-local ui = { class = nil, spec = "All specs", tag = "All tags", search = "", sel = nil, confirm = nil }
+-- mode: "macros" (class macros) or "commands" (the macro command reference)
+local ui = { class = nil, spec = "All specs", tag = "All tags", search = "", sel = nil, confirm = nil,
+             mode = "macros", group = "All" }
 local lastMessage = {}
 
 local function db()
@@ -79,7 +81,7 @@ function Mac.Check(rec)
             if CHAT[cmd] then chat = true end
         end
     end
-    if rec and rec.tag and not TAG_ORDER[rec.tag] then errors[#errors + 1] = "unknown tag " .. tostring(rec.tag) end
+    if rec and rec.tag and not TAG_ORDER[rec.tag] and rec.c ~= "CMD" then errors[#errors + 1] = "unknown tag " .. tostring(rec.tag) end
     return { ok = #errors == 0, errors = errors, chat = chat, length = #body }
 end
 
@@ -176,7 +178,23 @@ end
 
 function Mac.Get(id)
     for _, rec in ipairs(library()) do if rec.id == id then return rec end end
+    for _, rec in ipairs(ns.MacroCommands or {}) do if rec.id == id then return rec end end
     return nil
+end
+
+-- The command reference, by group ("All" for every one) and search text.
+function Mac.Commands(group, search)
+    local out = {}
+    search = (search or ""):lower()
+    for _, rec in ipairs(ns.MacroCommands or {}) do
+        local ok = (group == nil or group == "All" or rec.group == group)
+        if ok and search ~= "" then
+            ok = rec.cmd:lower():find(search, 1, true) or rec.n:lower():find(search, 1, true)
+                or (rec.note or ""):lower():find(search, 1, true) or rec.body:lower():find(search, 1, true)
+        end
+        if ok then out[#out + 1] = rec end
+    end
+    return out
 end
 
 -- Macros for a class: its own, then the shared ones. class "SHARED" = shared only.
@@ -494,8 +512,8 @@ local function refreshDetail()
         ui.bAcc:SetEnabled(false); ui.bChar:SetEnabled(false); ui.bCopy:SetEnabled(false)
         return
     end
-    ui.dName:SetText(rec.n)
-    ui.dTag:SetTag("Group", rec.tag)
+    ui.dName:SetText(rec.cmd and (rec.cmd .. C.dim .. "   example macro: " .. rec.n .. "|r") or rec.n)
+    ui.dTag:SetTag("Group", rec.group or rec.tag)
     local status, spell = Mac.Status(rec)
     if status == "installed" then
         ui.dStatus:SetTag("Verified", "Installed")
@@ -504,7 +522,7 @@ local function refreshDetail()
     else
         ui.dStatus:Hide()
     end
-    ui.dNote:SetText((rec.note or "") .. ((rec.s or rec.c ~= "ALL") and (C.dim .. "  " .. (rec.s and (rec.s .. " ") or "") .. (rec.c == "ALL" and "" or rec.c:lower()) .. "|r") or ""))
+    ui.dNote:SetText((rec.note or "") .. (((rec.s or rec.c ~= "ALL") and rec.c ~= "CMD") and (C.dim .. "  " .. (rec.s and (rec.s .. " ") or "") .. (rec.c == "ALL" and "" or rec.c:lower()) .. "|r") or ""))
     local text, missingItems = Mac.Resolve(rec.body)
     local check = Mac.Check(rec)
     ui.dBody:SetText(text)
@@ -524,8 +542,16 @@ local function refreshDetail()
 end
 
 local function buildFilters(page)
-    local h = W.Header(page, "Macros")
-    h:SetPoint("TOPLEFT", 0, -2)
+    -- Class macros | Commands
+    ui.modeBtns = {}
+    for i, m in ipairs({ { "macros", "Class macros", 106 }, { "commands", "Commands", 92 } }) do
+        local b = W.Button(page, m[2], m[3], function()
+            if ui.mode ~= m[1] then ui.mode = m[1]; ui.sel = nil; ui.confirm = nil; ui.search = ""; ui.searchBox:SetText("") end
+            refresh()
+        end)
+        b:SetPoint("TOPLEFT", i == 1 and 0 or 110, 2)
+        ui.modeBtns[m[1]] = b
+    end
     local opts = classOptions()
     ui.clsBtn = W.Cycle(page, 116, opts, function() return ui.class end, function(v)
         ui.class = v
@@ -534,7 +560,7 @@ local function buildFilters(page)
     end)
     ui.clsBtn.format = ns.ClassLabel
     ui.clsBtn.tipTitle = "Show macros for a class (All classes = shared ones)"
-    ui.clsBtn:SetPoint("TOPLEFT", 64, 2)
+    ui.clsBtn:SetPoint("TOPLEFT", 216, 2)
     ui.specBtn = W.MarkChoice(W.Button(page, "", 134, nil))
     ui.specBtn:SetPoint("LEFT", ui.clsBtn, "RIGHT", 4, 0)
     ui.specBtn:SetScript("OnClick", function(_, mouse)
@@ -549,8 +575,12 @@ local function buildFilters(page)
     for _, t in ipairs(TAGS) do tagOpts[#tagOpts + 1] = t end
     ui.tagBtn = W.Cycle(page, 118, tagOpts, function() return ui.tag end, function(v) ui.tag = v; refresh() end)
     ui.tagBtn:SetPoint("LEFT", ui.specBtn, "RIGHT", 4, 0)
-    ui.searchBox = W.EditBox(page, 150, function(text) ui.search = text or ""; refresh() end, "Search macros")
-    ui.searchBox:SetPoint("LEFT", ui.tagBtn, "RIGHT", 8, 0)
+    ui.groupBtn = W.Dropdown(page, 150, ns.MacroCommandGroups or { "All" }, function() return ui.group end,
+        function(v) ui.group = v; refresh() end, "Show: ")
+    ui.groupBtn.tipTitle = "What kind of command"
+    ui.groupBtn:SetPoint("TOPLEFT", 216, 2)
+    ui.searchBox = W.EditBox(page, 140, function(text) ui.search = text or ""; refresh() end, "Search")
+    ui.searchBox:SetPoint("TOPRIGHT", page, "TOPRIGHT", -4, 1)
 
     ui.info = W.Label(page, "", "GameFontHighlightSmall")
     ui.info:SetPoint("TOPLEFT", 0, -26)
@@ -574,17 +604,17 @@ local function buildList(page)
     end, function(row, rec)
         row.rec = rec
         local on = ui.sel == rec.id
-        row.name:SetText((on and C.gold or C.white) .. rec.n .. "|r")
+        row.name:SetText((on and C.gold or C.white) .. (rec.cmd or rec.n) .. "|r")
         local status, spell = Mac.Status(rec)
         if status == "installed" then
             row.stat:SetText(W.TagText("Verified", "Installed"))
         elseif status == "needs" then
             row.stat:SetText(W.TagText("Unverified", "Needs spell"))
         else
-            row.stat:SetText(C.dim .. rec.tag .. "|r")
+            row.stat:SetText(C.dim .. (rec.group or rec.tag) .. "|r")
         end
         row.tip = function(tip)
-            tip:AddLine(rec.n, 1, 0.82, 0)
+            tip:AddLine(rec.cmd or rec.n, 1, 0.82, 0)
             if rec.note then tip:AddLine(rec.note, 1, 1, 1, true) end
             if status == "needs" then tip:AddLine("You have not learned " .. spell .. ".", 1, 0.5, 0.3) end
         end
@@ -621,13 +651,26 @@ function Mac.Build(page, onChange)
     if onChange then ui.onChange = onChange end
 end
 
+function Mac.SetMode(mode)
+    if mode == "commands" or mode == "macros" then
+        if ui.mode ~= mode then ui.sel, ui.confirm = nil, nil end
+        ui.mode = mode
+    end
+end
+
 function Mac.Refresh()
     local h = helpers()
+    local cmds = ui.mode == "commands"
+    for m, b in pairs(ui.modeBtns) do if m == ui.mode then b:LockHighlight() else b:UnlockHighlight() end end
+    ui.clsBtn:SetShown(not cmds); ui.specBtn:SetShown(not cmds); ui.tagBtn:SetShown(not cmds)
+    ui.groupBtn:SetShown(cmds)
+    ui.searchBox:SetPlaceholder(cmds and "Search commands" or "Search macros")
     ui.class = ui.class or (h.myClass and h.myClass()) or "WARRIOR"
     ui.clsBtn.Refresh()
     ui.specBtn:SetText(ui.spec)
     ui.tagBtn.Refresh()
-    local items = Mac.For(ui.class, ui.spec, ui.tag, ui.search)
+    ui.groupBtn:Refresh()
+    local items = cmds and Mac.Commands(ui.group, ui.search) or Mac.For(ui.class, ui.spec, ui.tag, ui.search)
     ui.list:SetItems(items)
     local found = false
     for _, rec in ipairs(items) do if rec.id == ui.sel then found = true end end
@@ -635,7 +678,8 @@ function Mac.Refresh()
         ui.sel = items[1] and items[1].id or nil
         ui.confirm = nil
     end
-    ui.info:SetText(C.dim .. ("%d macros. Pick one, read it, then Add. It goes in your own macro list; nothing you already have is changed."):format(#items) .. "|r")
+    ui.info:SetText(C.dim .. (cmds and ("%d commands and conditions, each with an example. Copy the text into the game's macro window (/macro), or Add it."):format(#items)
+        or ("%d macros. Pick one, read it, then Add. It goes in your own macro list; nothing you already have is changed."):format(#items)) .. "|r")
     refreshDetail()
     local nAcc, maxAcc, nChar, maxChar = Mac.Slots()
     ui.slotText:SetText(C.dim .. "Your macro slots|r")
@@ -653,6 +697,8 @@ function Mac.Show(id)
     if not rec then return false end
     ui.class = (rec.c == "ALL") and "SHARED" or rec.c
     ui.spec, ui.tag, ui.search = "All specs", "All tags", ""
+    ui.mode = rec.c == "CMD" and "commands" or "macros"
+    ui.group = "All"
     ui.sel = id
     return true
 end

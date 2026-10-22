@@ -1,8 +1,9 @@
 -- RUIN Codex dungeon data (sample)
 -- Level ranges and bosses are from WoW Classic. WoW Forever has changed
 -- level ranges and added dungeons (Hall of Thanes, Ruins of Lordaeron), so
--- this is placeholder data to test the experience. Drops are not listed
--- here on purpose: Codex learns them from what RUIN members actually loot.
+-- this is placeholder data to test the experience. Boss loot lists live in
+-- loot data files (Loot.lua, LootSample.lua); Codex also learns drops from
+-- what RUIN members actually loot.
 local ADDON, ns = ...
 
 ns.Dungeons = {
@@ -48,8 +49,11 @@ ns.Dungeons = {
         },
     },
     {
-        id = "hot", name = "Hall of Thanes", levels = "?", where = "New in WoW Forever",
-        bosses = { { "(unknown)", "No data yet. Drops learned by RUIN members will appear below." } },
+        id = "hot", name = "Hall of Thanes", levels = "13-18", where = "Old Ironforge, Ironforge (new in WoW Forever)",
+        bosses = {
+            { "Faldrim Anvilmar", "No tips recorded yet." },
+            { "Durgen Dirgehammer", "Last boss; his head is needed for Old Ironforge Incursion." },
+        },
     },
     {
         id = "rol", name = "Ruins of Lordaeron", levels = "?", where = "New in WoW Forever",

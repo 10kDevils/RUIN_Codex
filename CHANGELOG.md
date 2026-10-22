@@ -6,6 +6,15 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
+## 0.3.10 — 2026-10-21
+
+4 changes since 0.3.9 (needs RUIN Core 0.3.15):
+
+1. **Gear Path and Best-in-slot are gone.** RUIN will track gear with a dedicated gear addon (and may work with it later). Codex keeps the upgrade line on item tooltips; its settings (the line on or off, and which spec's weights it uses) moved to the bottom of the Journal's list. `/codex path` and `/codex bis` now say where they went. The tooltip line also reads "Equip:" lines the item API misses, such as *Increases damage and healing done by magical spells and effects by up to 12*, school damage, spell crit and hit, attack power, mana per 5 and defense, and healers' weights now count healing over spell damage.
+2. **Macro commands.** The Macros tab has *Class macros* and *Commands*. Commands is a reference of 47 less-known macro commands and conditions (targeting, casting, conditions, items and gear, pet, group and raid, utility), each with a working example you can copy into the game's macro window or add in one click. `/codex commands` opens it.
+3. **Boss loot in the Journal.** Each boss lists the items it drops, with a drop chance when the list has one and a note when RUIN members have looted it; other drops and anything RUIN looted that isn't listed follow. Loot lists come from data files (`Loot.lua` explains the format; `LootSample.lua` is the template, with the Deadmines from WoW Classic marked *Not checked on Forever*), from a data addon that fills `RUIN_CodexLoot`, or from another addon calling `RUIN_API:GetModule("Codex"):AddLoot(...)`. Hall of Thanes now names its two bosses.
+4. Planning a run in the Journal uses the same day list and hour / minute / AM-PM boxes as Muster.
+
 ## 0.3.9 — 2026-10-19
 
 1 change since 0.3.8:
