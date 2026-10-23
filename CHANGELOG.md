@@ -6,6 +6,12 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
+## 0.3.12 — 2026-10-23
+
+1 change since 0.3.11:
+
+1. The Journal's text and Codex's lists show a scroll bar only when there is something to scroll.
+
 ## 0.3.11 — 2026-10-22
 
 1 change since 0.3.10 (needs RUIN Core 0.3.16):

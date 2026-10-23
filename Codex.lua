@@ -14,7 +14,7 @@ end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Codex", { version = "0.3.11" })
+local M = R:RegisterModule("Codex", { version = "0.3.12" })
 ns.Codex = M
 
 local DEFAULTS = { drops = {}, tooltip = true, spec = "Auto", installed = {} }
@@ -425,6 +425,7 @@ local function detailList(parent)
         end
         for i = #lines + 1, #self.rows do self.rows[i]:Hide() end
         child:SetHeight(math.max(10, y))
+        if W.FitScrollBar then W.FitScrollBar(sf) end   -- no scroll bar when it all fits
     end
     return obj
 end
