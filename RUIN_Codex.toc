@@ -2,7 +2,7 @@
 ## Title: |cffe6b862RUIN|r Codex
 ## Notes: Class macros you can add in one click, a macro command reference, a dungeon and raid journal with boss loot, and an upgrade line on item tooltips.
 ## Author: RUIN
-## Version: 0.3.12
+## Version: 0.4.0
 ## Dependencies: RUIN_Core
 ## SavedVariables: RUIN_CodexDB
 ## IconTexture: Interface\Icons\INV_Misc_Book_09
