@@ -6,6 +6,12 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
+## 0.4.1 — 2026-10-28
+
+Security update (works best with RUIN Core 0.4.5). 1 change since 0.4.0:
+
+1. Learned drops shared by other members are checked (a real item ID and a short instance name) before they're kept.
+
 ## 0.4.0 — 2026-10-23 · Beta 1
 
 The RUIN Gaming Companion App enters beta: every addon is now 0.4.0. Nothing changed since 0.3.12 apart from the version number. Report what you find under Settings → Feedback.

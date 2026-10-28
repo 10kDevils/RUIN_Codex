@@ -269,6 +269,7 @@ end
 
 function M:OnDrop(d, sender)
     if type(d.i) ~= "string" or type(d.id) ~= "number" then return end
+    if d.id < 1 or d.id > 10000000 or d.id ~= math.floor(d.id) or #d.i > 64 then return end
     recordDrop(d.i, d.id)
 end
 
