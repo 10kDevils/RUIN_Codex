@@ -222,7 +222,9 @@ elseif GameTooltip and GameTooltip.HookScript then
 end
 
 ---------------------------------------------------------------------------
--- Learning drops: your own loot inside a dungeon is shared with RUIN
+-- Learning drops: loot inside a dungeon or raid is shared with RUIN. Your
+-- own loot always; a groupmate's who doesn't run RUIN by one RUIN member of
+-- the group; members who were offline catch up when they connect.
 ---------------------------------------------------------------------------
 local refreshPage = function() end
 
@@ -247,30 +249,166 @@ local function qualityOf(id, link)
     return colors[(link:match("|c(%x%x%x%x%x%x%x%x)") or ""):lower()]
 end
 
-local function onLoot(_, text, looter)
+-- Which lines are real loot: "X receives loot: [item]." and "You receive loot:
+-- [item]." (and their "xN" forms). Items handed out by quests, crafting or
+-- the roll system's "won"/"selected Need" lines don't count.
+local lootPatterns
+local function toPattern(g)
+    g = g:gsub("([%(%)%.%-%+%[%]%?%*%^%$])", "%%%1")
+    return "^" .. g:gsub("%%s", "(.+)"):gsub("%%d", "%%d+") .. "$"
+end
+local function buildPatterns()
+    lootPatterns = {}
+    local function add(g, self)
+        if type(g) == "string" and g ~= "" then lootPatterns[#lootPatterns + 1] = { p = toPattern(g), self = self } end
+    end
+    add(LOOT_ITEM_SELF_MULTIPLE or "You receive loot: %sx%d.", true)
+    add(LOOT_ITEM_SELF or "You receive loot: %s.", true)
+    add(LOOT_ITEM_MULTIPLE or "%s receives loot: %sx%d.", false)
+    add(LOOT_ITEM or "%s receives loot: %s.", false)
+end
+
+-- The looter of a loot line ("me" for your own), or nil if it isn't a loot line.
+local function parseLoot(text)
+    if not lootPatterns then buildPatterns() end
+    for _, lp in ipairs(lootPatterns) do
+        local a, b = text:match(lp.p)
+        if a then
+            if lp.self then return "me", a end
+            return a, b
+        end
+    end
+    return nil
+end
+
+local function short(n) return (tostring(n or ""):gsub("%-.*$", "")) end
+
+-- RUIN members online, by short name (lower case).
+local function ruinNames()
+    local set = {}
+    for _, p in ipairs(R:GetOnlineMembers() or {}) do if p.name then set[short(p.name):lower()] = true end end
+    return set
+end
+
+-- Your group, by short name (you included).
+local function groupNames()
+    local out = { short(UnitName("player")) }
+    local n = GetNumGroupMembers and GetNumGroupMembers() or 0
+    local raid = IsInRaid and IsInRaid()
+    for k = 1, n do
+        local unit = raid and ("raid" .. k) or ("party" .. k)
+        local name = UnitName(unit)
+        if type(name) == "string" and not (issecretvalue and issecretvalue(name)) and name ~= out[1] then out[#out + 1] = short(name) end
+    end
+    return out
+end
+
+-- Should you report this player's loot? Your own always. Someone else's when
+-- they don't run RUIN and you're the first RUIN member of the group by name,
+-- so each drop is counted once however many RUIN members are there.
+local function reportsFor(looter)
+    local me = short(UnitName("player"))
+    if looter == "me" or short(looter):lower() == me:lower() then return true end
+    local ruin = ruinNames()
+    if ruin[short(looter):lower()] then return false end           -- their own RUIN reports it
+    local first
+    for _, n in ipairs(groupNames()) do
+        local low = n:lower()
+        if (ruin[low] or low == me:lower()) and (not first or low < first) then first = low end
+    end
+    return first == me:lower()
+end
+M.ReportsFor = reportsFor
+
+local recent = {}          -- "id|looter" -> time, so the chat line and the encounter event count once
+local function report(inst, id, looter, q)
+    if not id or (q ~= nil and q < 2) then return end
+    local key = id .. "|" .. short(looter == "me" and UnitName("player") or looter):lower()
+    if recent[key] and GetTime() - recent[key] < 15 then return end
+    recent[key] = GetTime()
+    recordDrop(inst, id)
+    M:Send("DROP", { i = inst, id = id }, "ORG", nil, R.PRIORITY.BULK)
+end
+
+local function inGroupInstance()
+    if not IsInInstance then return false end
+    local inInstance, kind = IsInInstance()
+    return inInstance and (kind == "party" or kind == "raid")
+end
+
+local function onLoot(_, text, looterArg)
     if type(text) ~= "string" or (issecretvalue and issecretvalue(text)) then return end
     R.Items.RememberLinks(text)
-    if not IsInInstance then return end
-    local inInstance, kind = IsInInstance()
-    if not inInstance or (kind ~= "party" and kind ~= "raid") then return end
-    -- Only your own loot is reported, so a group of RUIN members doesn't count one drop five times.
-    local me = UnitName("player")
-    if looter and looter ~= "" and (looter:gsub("%-.*$", "")) ~= me then return end
+    if not inGroupInstance() then return end
+    local looter = parseLoot(text)
+    if not looter then return end
+    if looter ~= "me" and type(looterArg) == "string" and looterArg ~= "" and not (issecretvalue and issecretvalue(looterArg)) then
+        looter = looterArg
+    end
+    if not reportsFor(looter) then return end
     local inst = GetInstanceInfo and GetInstanceInfo() or "Unknown"
     for link in text:gmatch("|H(item:[^|]+)|h") do
         local id = itemIdFromLink(link)
-        local q = id and qualityOf(id, text)
-        if id and (q == nil or q >= 2) then
-            recordDrop(inst, id)
-            M:Send("DROP", { i = inst, id = id }, "ORG", nil, R.PRIORITY.BULK)
-        end
+        report(inst, id, looter, id and qualityOf(id, text))
     end
+end
+
+-- Retail: boss loot also comes as an event, which still works where loot lines are hidden.
+local function onEncounterLoot(_, _, itemID, itemLink, _, playerName)
+    if not inGroupInstance() or type(playerName) ~= "string" or (issecretvalue and (issecretvalue(playerName) or issecretvalue(itemID))) then return end
+    if not reportsFor(playerName) then return end
+    local id = tonumber(itemID) or (type(itemLink) == "string" and itemIdFromLink(itemLink))
+    report(GetInstanceInfo and GetInstanceInfo() or "Unknown", id, playerName, id and qualityOf(id, type(itemLink) == "string" and itemLink or ""))
 end
 
 function M:OnDrop(d, sender)
     if type(d.i) ~= "string" or type(d.id) ~= "number" then return end
     if d.id < 1 or d.id > 10000000 or d.id ~= math.floor(d.id) or #d.i > 64 then return end
     recordDrop(d.i, d.id)
+end
+
+-- Members who were offline catch up: on connecting, ask; one member who
+-- knows more answers with their drop counts, which merge by the larger count.
+local lastHeard, sharePending = -999, false
+local function knownCount()
+    local n = 0
+    for _, items in pairs(db.drops) do for _ in pairs(items) do n = n + 1 end end
+    return n
+end
+
+function M:OnDropAsk(d)
+    if sharePending or knownCount() <= (tonumber(d.n) or 0) then return end
+    sharePending = true
+    local asked = GetTime()
+    C_Timer.After(3 + math.random() * 10, function()
+        sharePending = false
+        if lastHeard >= asked then return end
+        for inst, items in pairs(db.drops) do
+            local batch = {}
+            for id, e in pairs(items) do
+                batch[#batch + 1] = { id, e.n or 1 }
+                if #batch >= 25 then M:Send("DROPS", { i = inst, l = batch }, "ORG", nil, R.PRIORITY.BULK); batch = {} end
+            end
+            if #batch > 0 then M:Send("DROPS", { i = inst, l = batch }, "ORG", nil, R.PRIORITY.BULK) end
+        end
+    end)
+end
+
+function M:OnDrops(d)
+    lastHeard = GetTime()
+    if type(d.i) ~= "string" or type(d.l) ~= "table" then return end
+    db.drops[d.i] = db.drops[d.i] or {}
+    local changed = false
+    for k, it in ipairs(d.l) do
+        if k > 40 then break end
+        local id, n = type(it) == "table" and tonumber(it[1]), type(it) == "table" and tonumber(it[2])
+        if id and n then
+            local e = db.drops[d.i][id] or { n = 0 }
+            if n > (e.n or 0) then e.n, e.t = math.min(n, 9999), e.t or GetServerTime(); changed = true end
+            db.drops[d.i][id] = e
+        end
+    end
+    if changed then refreshPage() end
 end
 
 local function itemInfo(id)
@@ -590,6 +728,12 @@ function M:OnEnable()
     end
 
     self:Listen("DROP", "OnDrop")
+    self:Listen("DROPQ", "OnDropAsk")
+    self:Listen("DROPS", "OnDrops")
+    pcall(self.RegisterEvent, self, "ENCOUNTER_LOOT_RECEIVED", onEncounterLoot)
+    R:Subscribe("CHANNELS_CHANGED", function()
+        C_Timer.After(15, function() if R:IsConnected() then self:Send("DROPQ", { n = knownCount() }, "ORG", nil, R.PRIORITY.BULK) end end)
+    end)
     self:AddTab("Codex", buildPage)
     self:RegisterEvent("CHAT_MSG_LOOT", onLoot)
     R:Subscribe("Muster:EVENTS", function() refreshPage() end)

@@ -4,7 +4,11 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## Unreleased
 
-(nothing yet)
+1. **Drops reach the whole org more reliably.**
+   - A groupmate who doesn't run RUIN still counts: one RUIN member of the group (the first by name) reports their loot, so each drop is counted once however many RUIN members are there.
+   - Only real loot lines count ("receives loot"); items from quests or crafting and the roll system's "won" and "selected" lines no longer do.
+   - Members who were offline catch up: when RUIN connects, Codex asks, and a member who knows more drops sends theirs.
+   - On Retail, boss loot is also read from the encounter loot event, which still works where loot lines are hidden.
 
 ## 0.4.1 — 2026-10-28
 

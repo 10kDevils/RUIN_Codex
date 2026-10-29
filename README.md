@@ -30,7 +30,7 @@ ns.AddLoot("dm", {                                   -- the Journal entry's id o
 Add a file with one `ns.AddLoot` per instance (list it in `RUIN_Codex.toc` after `LootSample.lua`; a later list replaces the sample). A separate data addon can instead fill the global `RUIN_CodexLoot = { [instance] = data }` before Codex loads, or call `RUIN_API:GetModule("Codex"):AddLoot(instance, data)`.
 
 ## What it shares with RUIN
-Items you loot inside a dungeon or raid (item and instance).
+Items looted inside a dungeon or raid (item and instance): yours, and those of groupmates who don't run RUIN (reported by one RUIN member of the group, so each drop counts once). When you connect, a member who knows more drops sends you the counts you missed.
 
 ## Notes
 Dungeon and raid data are WoW Classic's as a placeholder, and the Journal says so: the sample Deadmines loot list is marked *Not checked on Forever*. Stat weights are a reasoned starting point, not simulation output. Gear tracking (best-in-slot lists, a gear path) moved out of Codex in 0.3.10; RUIN will use a dedicated gear addon for it.
