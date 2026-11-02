@@ -4,6 +4,12 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## Unreleased
 
+(nothing yet)
+
+## 0.4.2 — 2026-11-01
+
+1 change since 0.4.1:
+
 1. **Drops reach the whole org more reliably.**
    - A groupmate who doesn't run RUIN still counts: one RUIN member of the group (the first by name) reports their loot, so each drop is counted once however many RUIN members are there.
    - Only real loot lines count ("receives loot"); items from quests or crafting and the roll system's "won" and "selected" lines no longer do.

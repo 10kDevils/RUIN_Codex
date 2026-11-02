@@ -14,7 +14,7 @@ end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Codex", { version = "0.4.0" })
+local M = R:RegisterModule("Codex", { version = "0.4.2" })
 ns.Codex = M
 
 local DEFAULTS = { drops = {}, tooltip = true, spec = "Auto", installed = {} }
@@ -396,13 +396,13 @@ end
 
 function M:OnDrops(d)
     lastHeard = GetTime()
-    if type(d.i) ~= "string" or type(d.l) ~= "table" then return end
+    if type(d.i) ~= "string" or type(d.l) ~= "table" or #d.i > 64 then return end
     db.drops[d.i] = db.drops[d.i] or {}
     local changed = false
     for k, it in ipairs(d.l) do
         if k > 40 then break end
         local id, n = type(it) == "table" and tonumber(it[1]), type(it) == "table" and tonumber(it[2])
-        if id and n then
+        if id and n and id >= 1 and id <= 10000000 and id == math.floor(id) and n >= 1 then
             local e = db.drops[d.i][id] or { n = 0 }
             if n > (e.n or 0) then e.n, e.t = math.min(n, 9999), e.t or GetServerTime(); changed = true end
             db.drops[d.i][id] = e
