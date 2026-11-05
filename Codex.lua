@@ -14,7 +14,7 @@ end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Codex", { version = "0.5.2" })
+local M = R:RegisterModule("Codex", { version = "0.5.3" })
 ns.Codex = M
 
 local DEFAULTS = { drops = {}, tooltip = true, spec = "Auto", installed = {} }
@@ -91,6 +91,13 @@ local SLOTS = {
     INVTYPE_HOLDABLE = { 17 }, INVTYPE_RANGED = { 18 }, INVTYPE_RANGEDRIGHT = { 18 },
     INVTYPE_THROWN = { 18 }, INVTYPE_RELIC = { 18 },
 }
+-- Bows, guns, crossbows, thrown and wands: their damage counts as ranged (RDPS).
+local RANGED_LOC = { INVTYPE_RANGED = true, INVTYPE_RANGEDRIGHT = true, INVTYPE_THROWN = true }
+-- Retail has no ranged slot: bows, guns and wands go in the main hand.
+if R and R.client == "retail" then
+    SLOTS.INVTYPE_RANGED, SLOTS.INVTYPE_RANGEDRIGHT, SLOTS.INVTYPE_THROWN = { 16 }, { 16 }, { 16 }
+end
+M.SLOTS, M.RANGED_LOC = SLOTS, RANGED_LOC
 local SLOT_NAMES = { [1] = "head", [2] = "neck", [3] = "shoulders", [5] = "chest", [6] = "waist", [7] = "legs",
     [8] = "feet", [9] = "wrists", [10] = "hands", [11] = "ring 1", [12] = "ring 2", [13] = "trinket 1",
     [14] = "trinket 2", [15] = "back", [16] = "main hand", [17] = "off hand", [18] = "ranged" }
@@ -126,7 +133,7 @@ local function score(link, class, spec)
     spec = spec or mySpec()
     local w = weightsFor(class, spec)
     if not w then return nil end
-    return ns.ItemStats.Score(stats, w, class, spec)
+    return ns.ItemStats.Score(stats, w, class, spec, RANGED_LOC[equipLoc(link) or ""] == true)
 end
 M.Score = score
 

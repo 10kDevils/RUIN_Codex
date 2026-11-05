@@ -6,6 +6,12 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
+## 0.5.3 — 2026-11-05
+
+- The ranged slot is scored properly. A ranged weapon's damage per second now counts with its own weight (RDPS) instead of the melee one: casters weigh their wand (Mage, Warlock and Shadow priest 0.9, healing priests lower), hunters weigh their bow, gun or crossbow far above their melee weapon (melee DPS 0.4-0.6, ranged 2.6-3.0), and warriors and rogues weigh it low since it only pulls. Before, a wand with no stats had nothing a caster's spec weighed, so it got no upgrade line, and a hunter's bow counted the same as a melee weapon.
+- A weapon's "(12.5 damage per second)" tooltip line is read when the item API leaves the damage out.
+- On Retail, which has no ranged slot, bows, guns and wands are compared with the main hand.
+
 ## 0.5.2 — 2026-11-05
 
 - Spell damage and healing bonuses are read in every wording Codex has seen: "Increases healing done by magical spells and effects by up to 33", "Increases spell damage by up to 11", "+7 Damage and Healing Spells", "Healing Spells +55", "Spell Damage and Healing +30", enchant lines ("Enchanted: ..."), party auras ("... of all party members within 30 yards by up to 33"), and other server wordings ("Increases the damage and healing of your spells by up to 9"). One spell's modifiers ("... your Lesser Healing Wave spell by 20") and Use: effects are not counted.

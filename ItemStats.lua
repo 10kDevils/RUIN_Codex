@@ -6,7 +6,7 @@
 -- larger value is kept, so nothing is counted twice.
 --
 -- Keys (see Weights.lua): STR AGI STA INT SPI AP RAP FAP SP HEAL SP_<SCHOOL>
--- CRIT HIT HASTE EXP MP5 DEF DODGE PARRY BLOCK BV ARMOR DPS
+-- CRIT HIT HASTE EXP MP5 DEF DODGE PARRY BLOCK BV ARMOR DPS (RDPS is DPS in the ranged slot: see Score)
 -- SP is bonus spell damage, HEAL bonus healing. "Damage and healing" gives
 -- both; "+49 Shadow Damage" gives SP_SHADOW.
 local ADDON, ns = ...
@@ -41,6 +41,14 @@ function IS.ParseLine(line, t)
     s = s:gsub("^%s+", ""):gsub("%s+$", ""):gsub("%.$", "")
     s = s:gsub("^equip:%s*", ""):gsub("^enchanted:%s*", "")
     local a, b
+
+    -- a weapon's "(12.5 damage per second)" line, for when the item API leaves it out
+    a = s:match("^%(([%d%.,]+) damage per second%)$")
+    if a then
+        local v = tonumber((a:gsub(",", "")))
+        if v and v > 0 then t.DPS = v end
+        return true
+    end
 
     -- spell damage and healing (one stat on Classic-style items: it counts for both)
     a = s:match("^increases damage and healing done by magical spells and effects by up to ([%d,]+)$")
@@ -232,12 +240,16 @@ ns.SpecSchools = {
 
 -- Score: sum of stat x weight. School damage counts as spell power for the
 -- spec's schools; ranged and feral attack power count for the specs that use them.
-function IS.Score(stats, weights, class, spec)
+-- ranged: the item goes in the ranged slot (or is a bow, gun or wand on a
+-- client that puts those in the main hand), so its damage per second counts
+-- with the spec's RDPS weight instead of DPS.
+function IS.Score(stats, weights, class, spec, ranged)
     if not stats or not weights then return nil end
     local s = 0
     local schools = ns.SpecSchools[class or ""] and ns.SpecSchools[class][spec or ""] or nil
     for key, value in pairs(stats) do
         local w = weights[key]
+        if key == "DPS" and ranged then w = weights.RDPS end
         if not w then
             local school = key:match("^SP_(%u+)$")
             if school then
