@@ -29,6 +29,9 @@ ns.AddLoot("dm", {                                   -- the Journal entry's id o
 
 Add a file with one `ns.AddLoot` per instance (list it in `RUIN_Codex.toc` after `LootSample.lua`; a later list replaces the sample). A separate data addon can instead fill the global `RUIN_CodexLoot = { [instance] = data }` before Codex loads, or call `RUIN_API:GetModule("Codex"):AddLoot(instance, data)`.
 
+## For RUIN Core
+`DungeonShort(name)` ("The Deadmines" -> "DM") and `DungeonWhere(name)` ("Moonbrook, Westfall") on the Codex module feed RUIN Core's party dungeon signal.
+
 ## What it shares with RUIN
 Items looted inside a dungeon or raid (item and instance): yours, and those of groupmates who don't run RUIN (reported by one RUIN member of the group, so each drop counts once). When you connect, a member who knows more drops sends you the counts you missed.
 

@@ -14,7 +14,7 @@ end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Codex", { version = "0.5.0" })
+local M = R:RegisterModule("Codex", { version = "0.5.1" })
 ns.Codex = M
 
 local DEFAULTS = { drops = {}, tooltip = true, spec = "Auto", installed = {} }
@@ -707,6 +707,33 @@ end
 -- Setup
 ---------------------------------------------------------------------------
 -- Another addon (a loot database) adds a boss loot list. See Loot.lua.
+-- Looks up a dungeon or raid by name, ignoring case, punctuation and a leading "The".
+local function normName(s)
+    s = tostring(s or ""):lower():gsub("[^%a%d']+", " ")
+    return (s:gsub("^%s+", ""):gsub("%s+$", ""):gsub("^the ", ""))
+end
+function M:FindDungeon(name)
+    local want = normName(name)
+    if want == "" then return nil end
+    for _, list in ipairs({ ns.Dungeons or {}, ns.Raids or {} }) do
+        for _, dg in ipairs(list) do
+            if normName(dg.name) == want then return dg end
+        end
+    end
+    return nil
+end
+-- Codex's short name for a dungeon ("The Deadmines" -> "DM"), for RUIN Core's
+-- party dungeon signal. nil when Codex doesn't know it.
+function M:DungeonShort(name)
+    local dg = self:FindDungeon(name)
+    return dg and dg.id and tostring(dg.id):upper() or nil
+end
+-- Where the entrance is ("Moonbrook, Westfall"), when Codex knows it.
+function M:DungeonWhere(name)
+    local dg = self:FindDungeon(name)
+    return dg and dg.where or nil
+end
+
 function M:AddLoot(instance, data)
     local ok, err = ns.Loot.Add(instance, data)
     if ok then refreshPage() end
