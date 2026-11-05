@@ -14,7 +14,7 @@ end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Codex", { version = "0.5.1" })
+local M = R:RegisterModule("Codex", { version = "0.5.2" })
 ns.Codex = M
 
 local DEFAULTS = { drops = {}, tooltip = true, spec = "Auto", installed = {} }
@@ -418,11 +418,24 @@ local function itemInfo(id)
     return name, link, quality, minLevel
 end
 
--- For other modules (Exchange's bag sweep): how an item compares with your
--- gear. Returns a percentage, "empty", "noscore", "same", or nil.
+-- For other modules (Exchange's bag sweep, Core's party dungeon signal): how
+-- an item compares with your gear, counting its "Equip:" spell damage and
+-- healing lines. Takes an item link or an item id. Returns a percentage,
+-- "empty", "noscore", "same", or nil (unknown, or the item isn't loaded yet).
 function M:Compare(link)
+    if type(link) == "number" then link = "item:" .. math.floor(link) end
+    if type(link) ~= "string" then return nil end
     local ok, pct = pcall(compare, link)
     if ok then return pct end
+end
+
+-- true = an upgrade for your spec, false = not, nil = Codex can't tell.
+function M:IsUpgrade(link)
+    local pct = self:Compare(link)
+    if pct == "empty" or pct == "noscore" then return true end
+    if pct == "same" then return false end
+    if type(pct) == "number" then return pct >= 1 end
+    return nil
 end
 
 ---------------------------------------------------------------------------

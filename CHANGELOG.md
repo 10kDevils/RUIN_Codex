@@ -6,6 +6,12 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
+## 0.5.2 — 2026-11-05
+
+- Spell damage and healing bonuses are read in every wording Codex has seen: "Increases healing done by magical spells and effects by up to 33", "Increases spell damage by up to 11", "+7 Damage and Healing Spells", "Healing Spells +55", "Spell Damage and Healing +30", enchant lines ("Enchanted: ..."), party auras ("... of all party members within 30 yards by up to 33"), and other server wordings ("Increases the damage and healing of your spells by up to 9"). One spell's modifiers ("... your Lesser Healing Wave spell by 20") and Use: effects are not counted.
+- The item API's long stat names (ITEM_MOD_SPELL_HEALING_DONE and friends, without _SHORT) count the same as the short ones.
+- `Compare` also takes an item id; new `IsUpgrade(item)` returns true, false or nil (can't tell yet). RUIN Core's party dungeon signal uses it.
+
 ## 0.5.1 — 2026-11-04
 
 - `DungeonShort(name)`, `DungeonWhere(name)` and `FindDungeon(name)` on the Codex module, so RUIN Core's party dungeon signal shows Codex's own short names (DM, HOT ...) and the entrance in its tooltip. Names match ignoring case, punctuation and a leading "The".

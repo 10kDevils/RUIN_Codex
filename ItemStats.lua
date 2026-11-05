@@ -39,23 +39,34 @@ function IS.ParseLine(line, t)
     if type(line) ~= "string" then return false end
     local s = line:lower():gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
     s = s:gsub("^%s+", ""):gsub("%s+$", ""):gsub("%.$", "")
-    s = s:gsub("^equip:%s*", "")
+    s = s:gsub("^equip:%s*", ""):gsub("^enchanted:%s*", "")
     local a, b
 
-    -- spell damage and healing
+    -- spell damage and healing (one stat on Classic-style items: it counts for both)
     a = s:match("^increases damage and healing done by magical spells and effects by up to ([%d,]+)$")
         or s:match("^increases spell power by ([%d,]+)$") or s:match("^increases your spell power by ([%d,]+)$")
-        or s:match("^%+([%d,]+) spell power$") or s:match("^%+([%d,]+) spell damage and healing$")
+        or s:match("^%+([%d,]+) spell power$") or s:match("^spell power %+([%d,]+)$")
+        or s:match("^%+([%d,]+) spell damage and healing$") or s:match("^%+([%d,]+) damage and healing spells$")
+        or s:match("^%+([%d,]+) healing and spell damage$") or s:match("^spell damage and healing %+([%d,]+)$")
+        or s:match("^healing and spell damage %+([%d,]+)$")
         or s:match("^increases damage and healing by up to ([%d,]+)$")
+        or s:match("^increases damage and healing done by magical spells and effects of all party members within %d+ yards by up to ([%d,]+)$")
     if a then add(t, "SP", a); add(t, "HEAL", a); return true end
     a, b = s:match("^increases healing done by up to ([%d,]+) and damage done by up to ([%d,]+) for all magical spells and effects$")
     if a then add(t, "HEAL", a); add(t, "SP", b); return true end
+    -- healing only
     a = s:match("^increases healing done by spells and effects by up to ([%d,]+)$")
-        or s:match("^increases healing done by up to ([%d,]+)$") or s:match("^%+([%d,]+) healing spells$")
-        or s:match("^%+([%d,]+) healing$")
+        or s:match("^increases healing done by magical spells and effects by up to ([%d,]+)$")
+        or s:match("^increases healing done by up to ([%d,]+)$") or s:match("^increases healing by up to ([%d,]+)$")
+        or s:match("^increases your healing by up to ([%d,]+)$")
+        or s:match("^%+([%d,]+) healing spells$") or s:match("^%+([%d,]+) healing$")
+        or s:match("^healing spells %+([%d,]+)$") or s:match("^healing %+([%d,]+)$")
     if a then add(t, "HEAL", a); return true end
+    -- spell damage only
     a = s:match("^increases damage done by magical spells and effects by up to ([%d,]+)$")
-        or s:match("^%+([%d,]+) spell damage$")
+        or s:match("^increases spell damage by up to ([%d,]+)$") or s:match("^increases your spell damage by up to ([%d,]+)$")
+        or s:match("^increases spell damage by ([%d,]+)$")
+        or s:match("^%+([%d,]+) spell damage$") or s:match("^spell damage %+([%d,]+)$")
     if a then add(t, "SP", a); return true end
     -- one school: "Increases damage done by Shadow spells and effects by up to 7",
     -- "+49 Shadow Damage", "+7 Shadow Spell Damage"
@@ -64,6 +75,23 @@ function IS.ParseLine(line, t)
     if not school then a, school = s:match("^%+([%d,]+) (%a+) spell damage$") end
     if not school then a, school = s:match("^%+([%d,]+) (%a+) damage$") end
     if school and SCHOOLS[school] then add(t, "SP_" .. SCHOOLS[school], a); return true end
+
+    -- any other wording of a spell bonus ("Increases the damage and healing of your
+    -- spells by up to 9", server-specific text): read the words, not the exact sentence
+    if s:find("^increases") and not s:find("chance") and not s:find("critical") then
+        -- "by up to N" is how general bonuses read; "by N" lines are usually one spell's modifier
+        local n = s:match("by up to ([%d,]+)$")
+        local spells = s:find("spell") or s:find("magical")
+        if n and spells then
+            local dmg, heal = s:find("damage") ~= nil, s:find("heal") ~= nil
+            local one
+            for word, key in pairs(SCHOOLS) do if s:find(word, 1, true) then one = key end end
+            if dmg and heal then add(t, "SP", n); add(t, "HEAL", n); return true end
+            if heal then add(t, "HEAL", n); return true end
+            if dmg and one then add(t, "SP_" .. one, n); return true end
+            if dmg then add(t, "SP", n); return true end
+        end
+    end
 
     -- crit and hit, spells or melee (Forever uses one stat for both)
     a = s:match("^improves your chance to get a critical strike with spells by ([%d%.]+)%%$")
@@ -108,11 +136,12 @@ end
 -- healing; per-school damage keys become SP_<SCHOOL>.
 local function fromApi(raw, t)
     for key, value in pairs(raw or {}) do
-        if key == "ITEM_MOD_SPELL_POWER_SHORT" or key == "ITEM_MOD_SPELL_POWER" then
+        if key == "ITEM_MOD_SPELL_POWER_SHORT" or key == "ITEM_MOD_SPELL_POWER" or key == "ITEM_MOD_SPELL_DAMAGE_AND_HEALING_SHORT" then
             add(t, "SP", value); add(t, "HEAL", value)
         else
             local school = key:match("^ITEM_MOD_(%u+)_DAMAGE_SHORT$") or key:match("^ITEM_MOD_(%u+)_DAMAGE_DONE_SHORT$")
-            local mapped = ns.StatMap[key]
+            -- the API's long names (no _SHORT) mean the same stats
+            local mapped = ns.StatMap[key] or ns.StatMap[key .. "_SHORT"]
             if mapped then
                 add(t, mapped, value)
             elseif school and SCHOOLS[school:lower()] then
