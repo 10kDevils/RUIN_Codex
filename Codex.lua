@@ -17,7 +17,7 @@ local C = W.COLORS
 local M = R:RegisterModule("Codex", { version = "0.5.3" })
 ns.Codex = M
 
-local DEFAULTS = { drops = {}, tooltip = true, spec = "Auto", installed = {} }
+local DEFAULTS = { drops = {}, kills = {}, mobs = {}, tooltip = true, spec = "Auto", installed = {} }
 local CLASSES = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "WARLOCK", "DRUID" }
 
 -- "WARRIOR" -> "Warrior" (the game's own name when it has one).
@@ -380,6 +380,8 @@ local lastHeard, sharePending = -999, false
 local function knownCount()
     local n = 0
     for _, items in pairs(db.drops) do for _ in pairs(items) do n = n + 1 end end
+    for _, bosses in pairs(db.kills or {}) do for _ in pairs(bosses) do n = n + 1 end end
+    for _, m in pairs(db.mobs or {}) do for _ in pairs(m.items or {}) do n = n + 1 end end
     return n
 end
 
@@ -398,6 +400,7 @@ function M:OnDropAsk(d)
             end
             if #batch > 0 then M:Send("DROPS", { i = inst, l = batch }, "ORG", nil, R.PRIORITY.BULK) end
         end
+        M.SendTallies()
     end)
 end
 
@@ -416,6 +419,230 @@ function M:OnDrops(d)
         end
     end
     if changed then refreshPage() end
+end
+
+---------------------------------------------------------------------------
+-- Kill and mob-loot tallies, for the Journal's reference numbers: how often
+-- RUIN killed each boss (so a listed drop shows "3 of 12 kills"), and the
+-- greens and blues in the loot windows of the dungeon's mobs (the General
+-- list, with a drop chance per mob looted). Shared with the org like drops.
+---------------------------------------------------------------------------
+local function bossKey(s) return (tostring(s or ""):lower():gsub("[^%w]", "")) end
+
+-- The dungeon's boss list (the journal's names), so encounter names that
+-- differ a little ("Faldrim" vs "Faldrim Anvilmar") count for the right boss.
+local function bossesOf(inst)
+    local dg = M.FindDungeon and M:FindDungeon(inst)
+    local out = {}
+    if dg then
+        for _, b in ipairs(dg.bosses or {}) do out[#out + 1] = b[1] end
+        local loot = ns.Loot and ns.Loot.For(dg)
+        for _, b in ipairs(loot and loot.bosses or {}) do out[#out + 1] = b.name end
+    end
+    return out
+end
+
+local function matchBoss(inst, name)
+    local k = bossKey(name)
+    if k == "" then return nil end
+    for _, b in ipairs(bossesOf(inst)) do
+        local bk = bossKey(b)
+        if bk == k or (#k >= 4 and bk:find(k, 1, true)) or (#bk >= 4 and k:find(bk, 1, true)) then return b end
+    end
+    return nil
+end
+M.MatchBoss = matchBoss
+
+-- The first RUIN member of your group by name reports for the group (you,
+-- when you're alone or the only RUIN member), so a kill counts once.
+local function iReportForGroup()
+    local me = short(UnitName("player")):lower()
+    local ruin = ruinNames()
+    local first
+    for _, n in ipairs(groupNames()) do
+        local low = n:lower()
+        if (ruin[low] or low == me) and (not first or low < first) then first = low end
+    end
+    return first == nil or first == me
+end
+
+local function recordKill(inst, boss, n)
+    db.kills[inst] = db.kills[inst] or {}
+    db.kills[inst][boss] = (db.kills[inst][boss] or 0) + (n or 1)
+    refreshPage()
+end
+
+local recentKill = {}
+local bossGUIDs = {}       -- boss corpses aren't counted as mobs
+local function onBossDown(name, guid)
+    if guid then bossGUIDs[guid] = true end
+    if not inGroupInstance() then return end
+    local inst = GetInstanceInfo and GetInstanceInfo() or "Unknown"
+    local boss = matchBoss(inst, name)
+    if not boss then return end
+    local k = inst .. "|" .. bossKey(boss)
+    if recentKill[k] and GetTime() - recentKill[k] < 300 then return end
+    recentKill[k] = GetTime()
+    if not iReportForGroup() then return end
+    recordKill(inst, boss)
+    M:Send("KILL", { i = inst, b = boss }, "ORG", nil, R.PRIORITY.BULK)
+end
+
+local function okText(s, max) return type(s) == "string" and s ~= "" and #s <= (max or 64) and not (issecretvalue and issecretvalue(s)) end
+
+function M:OnKill(d)
+    if not okText(d.i) or not okText(d.b) then return end
+    recordKill(d.i, d.b)
+end
+
+-- ENCOUNTER_END (encounterID, name, difficulty, size, success)
+local function onEncounterEnd(_, _, name, _, _, success)
+    if success == 1 or success == true then onBossDown(name) end
+end
+
+-- WoW Forever: a boss dying in the combat log (its dungeons may have no encounters)
+local function onCombatLog()
+    if not CombatLogGetCurrentEventInfo then return end
+    local _, sub, _, _, _, _, _, guid, name = CombatLogGetCurrentEventInfo()
+    if sub ~= "UNIT_DIED" or not okText(name) or not inGroupInstance() then return end
+    if type(guid) ~= "string" or (issecretvalue and issecretvalue(guid)) or not guid:find("^Creature") then return end
+    local inst = GetInstanceInfo and GetInstanceInfo() or "Unknown"
+    if matchBoss(inst, name) then onBossDown(name, guid) end
+end
+
+-- Mob loot windows: every corpse RUIN members open inside counts once, and
+-- each green or blue in it counts as a drop from the dungeon's mobs.
+local seenCorpse = {}
+local pendingMobs = {}     -- inst -> { n = corpses, items = { [id] = n } } not yet sent
+local flushQueued = false
+
+local function mobsOf(inst)
+    db.mobs[inst] = db.mobs[inst] or { n = 0, items = {} }
+    db.mobs[inst].items = db.mobs[inst].items or {}
+    return db.mobs[inst]
+end
+
+local function flushMobs()
+    flushQueued = false
+    for inst, p in pairs(pendingMobs) do
+        local batch = {}
+        for id, n in pairs(p.items) do
+            batch[#batch + 1] = { id, n }
+            if #batch >= 25 then M:Send("MOBS", { i = inst, n = 0, l = batch }, "ORG", nil, R.PRIORITY.BULK); batch = {} end
+        end
+        M:Send("MOBS", { i = inst, n = p.n, l = batch }, "ORG", nil, R.PRIORITY.BULK)
+    end
+    pendingMobs = {}
+end
+M.FlushMobs = flushMobs
+
+local function isCorpse(guid)
+    return type(guid) == "string" and not (issecretvalue and issecretvalue(guid)) and (guid:find("^Creature") or guid:find("^Vehicle")) ~= nil
+end
+
+local function onLootOpened()
+    if not inGroupInstance() or not GetNumLootItems or not GetLootSlotLink then return end
+    local inst = GetInstanceInfo and GetInstanceInfo() or "Unknown"
+    local tguid = UnitGUID and UnitGUID("target")
+    if isCorpse(tguid) and UnitName and matchBoss(inst, UnitName("target")) then bossGUIDs[tguid] = true end
+    local corpses, found = {}, {}
+    for slot = 1, GetNumLootItems() or 0 do
+        local srcs = GetLootSourceInfo and { GetLootSourceInfo(slot) } or {}
+        local guid = srcs[1]
+        if not isCorpse(guid) then
+            guid = (UnitIsDead and UnitIsDead("target") and isCorpse(tguid)) and tguid or nil
+        end
+        if guid and not bossGUIDs[guid] and not seenCorpse[guid] then
+            for k = 1, #srcs, 2 do if isCorpse(srcs[k]) and not bossGUIDs[srcs[k]] then corpses[srcs[k]] = true end end
+            corpses[guid] = true
+            local link = GetLootSlotLink(slot)
+            local id = type(link) == "string" and not (issecretvalue and issecretvalue(link)) and itemIdFromLink(link)
+            local q = id and qualityOf(id, link)
+            if id and (q == 2 or q == 3) then found[#found + 1] = id end
+        end
+    end
+    local n = 0
+    for guid in pairs(corpses) do seenCorpse[guid] = true; n = n + 1 end
+    if n == 0 then return end
+    local m = mobsOf(inst)
+    pendingMobs[inst] = pendingMobs[inst] or { n = 0, items = {} }
+    local p = pendingMobs[inst]
+    m.n, p.n = m.n + n, p.n + n
+    for _, id in ipairs(found) do
+        m.items[id] = (m.items[id] or 0) + 1
+        p.items[id] = (p.items[id] or 0) + 1
+    end
+    refreshPage()
+    if not flushQueued then
+        flushQueued = true
+        C_Timer.After(30, flushMobs)
+    end
+end
+M.OnLootOpened = onLootOpened
+
+function M:OnMobs(d)
+    if not okText(d.i) or type(d.l) ~= "table" then return end
+    local n = tonumber(d.n) or 0
+    if n < 0 or n > 500 or n ~= math.floor(n) then return end
+    local m = mobsOf(d.i)
+    m.n = m.n + n
+    for k, it in ipairs(d.l) do
+        if k > 40 then break end
+        local id, c = type(it) == "table" and tonumber(it[1]), type(it) == "table" and tonumber(it[2])
+        if id and c and id >= 1 and id <= 10000000 and id == math.floor(id) and c >= 1 and c <= 500 then
+            m.items[id] = (m.items[id] or 0) + c
+        end
+    end
+    refreshPage()
+end
+
+-- catch-up: totals, merged by the larger count (like drops)
+function M:OnTally(d)
+    lastHeard = GetTime()
+    if not okText(d.i) then return end
+    local changed = false
+    if type(d.k) == "table" then
+        db.kills[d.i] = db.kills[d.i] or {}
+        for k, it in ipairs(d.k) do
+            if k > 40 then break end
+            local b, n = type(it) == "table" and it[1], type(it) == "table" and tonumber(it[2])
+            if okText(b) and n and n >= 1 and n == math.floor(n) and n > (db.kills[d.i][b] or 0) then
+                db.kills[d.i][b] = math.min(n, 99999); changed = true
+            end
+        end
+    end
+    local mn = tonumber(d.m)
+    if mn or type(d.l) == "table" then
+        local m = mobsOf(d.i)
+        if mn and mn == math.floor(mn) and mn > m.n then m.n = math.min(mn, 9999999); changed = true end
+        for k, it in ipairs(type(d.l) == "table" and d.l or {}) do
+            if k > 40 then break end
+            local id, n = type(it) == "table" and tonumber(it[1]), type(it) == "table" and tonumber(it[2])
+            if id and n and id >= 1 and id <= 10000000 and id == math.floor(id) and n >= 1 and n > (m.items[id] or 0) then
+                m.items[id] = math.min(n, 9999999); changed = true
+            end
+        end
+    end
+    if changed then refreshPage() end
+end
+
+function M.SendTallies()
+    for inst, bosses in pairs(db.kills) do
+        local list = {}
+        for b, n in pairs(bosses) do list[#list + 1] = { b, n } end
+        if #list > 0 then M:Send("TALLY", { i = inst, k = list }, "ORG", nil, R.PRIORITY.BULK) end
+    end
+    for inst, m in pairs(db.mobs) do
+        local batch, first = {}, true
+        for id, n in pairs(m.items or {}) do
+            batch[#batch + 1] = { id, n }
+            if #batch >= 25 then
+                M:Send("TALLY", { i = inst, m = first and m.n or nil, l = batch }, "ORG", nil, R.PRIORITY.BULK)
+                batch, first = {}, false
+            end
+        end
+        if first or #batch > 0 then M:Send("TALLY", { i = inst, m = first and m.n or nil, l = batch }, "ORG", nil, R.PRIORITY.BULK) end
+    end
 end
 
 local function itemInfo(id)
@@ -482,6 +709,37 @@ local function seenText(seen, id)
     return e and ("  " .. C.good .. "looted " .. (e.n or 1) .. "x by RUIN|r") or ""
 end
 
+local function pctText(n, of)
+    local p = n / of * 100
+    if p >= 10 or p == math.floor(p) then return ("%d%%"):format(math.floor(p + 0.5)) end
+    return ("%.1f%%"):format(p)
+end
+
+-- the reference tracker after a listed drop: "3/12 kills · 25%"
+local function trackText(seen, id, kills)
+    local n = id and seen and seen[id] and (seen[id].n or 1) or 0
+    if kills and kills > 0 then
+        return "  " .. C.dim .. ("%d/%d kill%s"):format(math.min(n, kills), kills, kills == 1 and "" or "s")
+            .. " · " .. pctText(math.min(n, kills), kills) .. "|r"
+    end
+    return n > 0 and seenText(seen, id) or ""
+end
+
+-- An item's link for the tooltip: the game's own, or "item:<id>" (the
+-- tooltip loads it from the server), or nil when only its name is known.
+local function linkFor(id)
+    if not id then return nil end
+    local _, link = itemInfo(id)
+    return link or ("item:" .. id)
+end
+
+-- A listed name the game already knows (seen in a bag, chat or the AH).
+local function idByName(name)
+    if type(name) ~= "string" or name == "" or not GetItemInfo then return nil end
+    local _, link = GetItemInfo(name)
+    return type(link) == "string" and itemIdFromLink(link) or nil
+end
+
 -- The journal page for one dungeon or raid: where it is, what's known about
 -- it (quests, attunement, set, quest XP, notes), each boss with its tips and
 -- the loot it drops (from loot data files), other drops, then drops RUIN
@@ -539,17 +797,24 @@ local function journalLines(dg, isRaid)
         for _, b in ipairs(dg.bosses) do bosses[#bosses + 1] = { name = b[1], tip = b[2], items = {} } end
     end
     if #bosses == 0 then lines[#lines + 1] = { "    " .. C.dim .. "No boss list published yet.|r" } end
-    local function itemLine(it)
-        local id = it.id or (it.name and seenByName[it.name:lower()])
-        local _, link
-        if id then _, link = itemInfo(id) end
+    local kills = db.kills[dg.name] or {}
+    local function killsOf(boss)
+        local k = bossKey(boss)
+        for b, n in pairs(kills) do if bossKey(b) == k then return n end end
+        return 0
+    end
+    local function itemLine(it, k)
+        local id = it.id or (it.name and (seenByName[it.name:lower()] or idByName(it.name)))
         local text = id and itemText(id, it.name) or (C.white .. it.name .. "|r")
         local info = it.info and ("  " .. C.dim .. "(" .. it.info .. ")|r") or ""
-        return { "    " .. C.dim .. "-|r " .. text .. info .. chanceText(it) .. (id and seenText(seen, id) or ""), link = link }
+        local track = (k and k > 0) and trackText(seen, id, k) or (chanceText(it) .. (id and seenText(seen, id) or ""))
+        return { "    " .. C.dim .. "-|r " .. text .. info .. track, link = linkFor(id), name = it.name, info = it.info }
     end
     for _, b in ipairs(bosses) do
-        lines[#lines + 1] = { C.white .. b.name .. "|r" .. (b.tip and ("  " .. C.dim .. b.tip .. "|r") or "") }
-        for _, it in ipairs(b.items) do lines[#lines + 1] = itemLine(it) end
+        local k = killsOf(b.name)
+        lines[#lines + 1] = { C.white .. b.name .. "|r" .. (k > 0 and ("  " .. C.good .. "killed " .. k .. "x by RUIN|r") or "")
+            .. (b.tip and ("  " .. C.dim .. b.tip .. "|r") or "") }
+        for _, it in ipairs(b.items) do lines[#lines + 1] = itemLine(it, k) end
         if loot and #b.items == 0 then lines[#lines + 1] = { "    " .. C.dim .. "- no list for this boss yet|r" } end
     end
     if loot and loot.trash and #loot.trash > 0 then
@@ -557,20 +822,47 @@ local function journalLines(dg, isRaid)
         lines[#lines + 1] = { C.gold .. "Other drops inside|r" }
         for _, it in ipairs(loot.trash) do lines[#lines + 1] = itemLine(it) end
     end
-    -- what RUIN looted that no list has
     local listed, listedNames = {}, {}
     if ns.Loot then listed, listedNames = ns.Loot.Listed(dg) end
+    local function isListed(id)
+        local name = itemInfo(id)
+        return listed[id] or (name and listedNames[name:lower()])
+    end
+    -- General: greens and blues from the dungeon's mobs, counted in the loot
+    -- windows RUIN members opened, with a chance per mob looted
+    local mobs = db.mobs[dg.name]
+    local general = {}
+    for id, n in pairs(mobs and mobs.items or {}) do
+        if not isListed(id) then general[#general + 1] = { id = id, n = n } end
+    end
+    table.sort(general, function(a, b) if a.n ~= b.n then return a.n > b.n end return a.id < b.id end)
+    lines[#lines + 1] = { " " }
+    local looted = mobs and mobs.n or 0
+    lines[#lines + 1] = { C.gold .. "General|r  " .. C.dim .. "greens and blues from the mobs inside"
+        .. (looted > 0 and (" · " .. looted .. " mob" .. (looted == 1 and "" or "s") .. " looted by RUIN") or "") .. "|r" }
+    for i, g in ipairs(general) do
+        if i > 60 then
+            lines[#lines + 1] = { "    " .. C.dim .. ("and %d more"):format(#general - 60) .. "|r" }
+            break
+        end
+        lines[#lines + 1] = { "    " .. C.dim .. "-|r " .. itemText(g.id) .. "  " .. C.dim .. ("x%d"):format(g.n)
+            .. (looted > 0 and (" · about " .. pctText(math.min(g.n, looted), looted) .. " per mob") or "") .. "|r", link = linkFor(g.id) }
+    end
+    if #general == 0 then
+        lines[#lines + 1] = { "    " .. C.dim .. "Nothing yet. Greens and blues show here as RUIN members loot the mobs.|r" }
+    end
+    -- what RUIN looted that no list (and not General) has
+    local inGeneral = {}
+    for _, g in ipairs(general) do inGeneral[g.id] = true end
     local extra = {}
     for id in pairs(seen or {}) do
-        local name = itemInfo(id)
-        if not listed[id] and not (name and listedNames[name:lower()]) then extra[#extra + 1] = id end
+        if not isListed(id) and not inGeneral[id] then extra[#extra + 1] = id end
     end
     table.sort(extra, function(a, b) return (seen[a].n or 0) > (seen[b].n or 0) end)
     lines[#lines + 1] = { " " }
     lines[#lines + 1] = { C.gold .. (loot and "Also looted by RUIN members" or "Looted by RUIN members") .. "|r" }
     for _, id in ipairs(extra) do
-        local _, link = itemInfo(id)
-        lines[#lines + 1] = { itemText(id) .. C.dim .. "  x" .. (seen[id].n or 1) .. "|r", link = link }
+        lines[#lines + 1] = { itemText(id) .. C.dim .. "  x" .. (seen[id].n or 1) .. "|r", link = linkFor(id) }
     end
     if #extra == 0 then
         lines[#lines + 1] = { C.dim .. (loot and "Nothing beyond the list yet." or "Nothing yet. Drops appear here as RUIN members loot them.") .. "|r" }
@@ -587,6 +879,31 @@ local function journalLines(dg, isRaid)
 end
 
 M.JournalLines = journalLines   -- for tests and other modules
+M.UI = ui
+
+-- Clicking an item: the full tooltip that stays open (like an item link in
+-- chat); shift-click links it in chat, ctrl-click tries it on.
+function M.ShowItem(link, button)
+    if type(link) ~= "string" then return end
+    local hyper = link:match("|H(item:[^|]+)|h") or link
+    local full = link:find("|H", 1, true) and link
+    if not full then
+        local name, l = itemInfo(tonumber(hyper:match("^item:(%d+)")) or 0)
+        full = l or ("|cffffffff|H" .. hyper .. "|h[" .. (name or "item") .. "]|h|r")
+    end
+    if IsModifiedClick and HandleModifiedItemClick and IsModifiedClick() then
+        local ok, done = pcall(HandleModifiedItemClick, full)
+        if ok and done then return end
+    end
+    if SetItemRef and pcall(SetItemRef, hyper, full, button or "LeftButton") then return end
+    local tip = ItemRefTooltip
+    if tip then
+        if ShowUIPanel then pcall(ShowUIPanel, tip) end
+        if not tip:IsShown() then tip:SetOwner(UIParent, "ANCHOR_PRESERVE") end
+        pcall(tip.SetHyperlink, tip, hyper)
+        tip:Show()
+    end
+end
 
 -- Journal text: one line per entry, each as tall as its wrapped text, in a
 -- scrolling column (item lines show the item's tooltip on hover).
@@ -609,13 +926,24 @@ local function detailList(parent)
                 row.text:SetJustifyV("TOP")
                 row:EnableMouse(true)
                 row:SetScript("OnEnter", function(self)
-                    if self.link and GameTooltip then
+                    if not GameTooltip then return end
+                    if self.link then
                         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                         pcall(GameTooltip.SetHyperlink, GameTooltip, self.link)
+                        GameTooltip:AddLine(C.dim .. "Click for the full tooltip. Shift-click to link it in chat.|r")
+                        GameTooltip:Show()
+                    elseif self.itemName then
+                        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                        GameTooltip:AddLine(self.itemName, 1, 1, 1)
+                        if self.itemInfo then GameTooltip:AddLine(self.itemInfo, 0.7, 0.7, 0.7) end
+                        GameTooltip:AddLine("The game hasn't sent this item yet. Its full tooltip shows here once a RUIN member loots it or you see it in game.", 0.6, 0.6, 0.6, true)
                         GameTooltip:Show()
                     end
                 end)
-                row:SetScript("OnLeave", function(self) if self.link and GameTooltip then GameTooltip:Hide() end end)
+                row:SetScript("OnLeave", function(self) if (self.link or self.itemName) and GameTooltip then GameTooltip:Hide() end end)
+                row:SetScript("OnMouseUp", function(self, button)
+                    if self.link then M.ShowItem(self.link, button) end
+                end)
                 self.rows[i] = row
             end
             row:ClearAllPoints()
@@ -624,6 +952,7 @@ local function detailList(parent)
             row.text:SetWidth(width - 8)
             row.text:SetText(line[1])
             row.link = line.link
+            row.itemName, row.itemInfo = not line.link and line.name or nil, line.info
             local blank = line[1] == " "
             local h = blank and 6 or math.max(14, row.text:GetStringHeight() or 14)
             row:SetHeight(h)
@@ -825,6 +1154,14 @@ function M:OnEnable()
     self:Listen("DROP", "OnDrop")
     self:Listen("DROPQ", "OnDropAsk")
     self:Listen("DROPS", "OnDrops")
+    self:Listen("KILL", "OnKill")
+    self:Listen("MOBS", "OnMobs")
+    self:Listen("TALLY", "OnTally")
+    pcall(self.RegisterEvent, self, "ENCOUNTER_END", onEncounterEnd)
+    pcall(self.RegisterEvent, self, "BOSS_KILL", function(_, _, name) onBossDown(name) end)
+    -- Core skips the combat log on Retail, where it belongs to Blizzard's UI
+    pcall(self.RegisterEvent, self, "COMBAT_LOG_EVENT_UNFILTERED", onCombatLog)
+    pcall(self.RegisterEvent, self, "LOOT_OPENED", onLootOpened)
     pcall(self.RegisterEvent, self, "ENCOUNTER_LOOT_RECEIVED", onEncounterLoot)
     R:Subscribe("CHANNELS_CHANGED", function()
         C_Timer.After(15, function() if R:IsConnected() then self:Send("DROPQ", { n = knownCount() }, "ORG", nil, R.PRIORITY.BULK) end end)
@@ -846,6 +1183,7 @@ function M:OnEnable()
         local inst = GetInstanceInfo and GetInstanceInfo()
         for i, dg in ipairs(ns.Dungeons) do if dg.name == inst then ui.selected = i; ui.jmode = "Dungeons" end end
         for i, r in ipairs(ns.Raids) do if r.name == inst then ui.raid = i; ui.jmode = "Raids" end end
+        flushMobs()     -- leaving a dungeon sends its mob loot now
     end)
 end
 

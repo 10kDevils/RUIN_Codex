@@ -6,7 +6,11 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
-## 0.5.3 — 2026-11-05
+## 0.5.3 — 2026-11-06
+
+- Journal items open their full tooltip on click, the way an item link in chat does; shift-click links the item in chat and ctrl-click tries it on. Hovering shows the tooltip too. Before, items RUIN had looted but the game hadn't loaded showed no tooltip; any item with a known ID now has one. A listed drop the game hasn't sent yet says so on hover.
+- Boss kill tracker, for reference beside the launch loot list (still the main source): each boss shows how often RUIN killed it, and each listed drop shows "3/12 kills · 25%". Kills come from the encounter events (ENCOUNTER_END, BOSS_KILL) and, on WoW Forever, a boss dying in the combat log; the first RUIN member of the group reports each kill once.
+- General: the greens and blues that drop from the dungeon's mobs, from the loot windows RUIN members open inside. Each item shows how often it dropped and an estimated chance per mob looted ("x4 · about 3% per mob"); the heading says how many mobs RUIN has looted there. A corpse counts once however often it's opened; boss corpses, chests and white or grey items don't count. Counts are sent to the org in batches (every 30 seconds, and on leaving), and members who were offline catch up with the drops.
 
 - The ranged slot is scored properly. A ranged weapon's damage per second now counts with its own weight (RDPS) instead of the melee one: casters weigh their wand (Mage, Warlock and Shadow priest 0.9, healing priests lower), hunters weigh their bow, gun or crossbow far above their melee weapon (melee DPS 0.4-0.6, ranged 2.6-3.0), and warriors and rogues weigh it low since it only pulls. Before, a wand with no stats had nothing a caster's spec weighed, so it got no upgrade line, and a hunter's bow counted the same as a melee weapon.
 - A weapon's "(12.5 damage per second)" tooltip line is read when the item API leaves the damage out.
