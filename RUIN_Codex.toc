@@ -12,6 +12,7 @@
 Dungeons.lua
 Loot.lua
 LootSample.lua
+LootForever.lua
 Weights.lua
 ItemStats.lua
 Codex.lua

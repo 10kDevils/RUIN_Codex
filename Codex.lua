@@ -482,43 +482,89 @@ local function seenText(seen, id)
     return e and ("  " .. C.good .. "looted " .. (e.n or 1) .. "x by RUIN|r") or ""
 end
 
--- The journal page for one dungeon or raid: where it is, each boss with the
--- loot it drops (from loot data files), other drops, then drops RUIN members
--- looted that no list has yet.
+-- The journal page for one dungeon or raid: where it is, what's known about
+-- it (quests, attunement, set, quest XP, notes), each boss with its tips and
+-- the loot it drops (from loot data files), other drops, then drops RUIN
+-- members looted that no list has yet.
+local STATUS_TEXT = { complete = "fully documented", strong = "well documented", partial = "partly documented",
+                      story_only = "story only, no boss list yet", minimal = "little published yet" }
+
 local function journalLines(dg, isRaid)
     local loot = ns.Loot and ns.Loot.For(dg)
-    local lines = {
-        { W.TagText("Sample", "WoW Classic sample") .. C.dim .. "  Level ranges, boss tips and loot lists are Classic's until RUIN records Forever's. \"Looted by RUIN\" is real.|r" },
-        { C.gold .. dg.name .. "|r" },
-        { C.dim .. (isRaid and (dg.size .. " players") or ("Levels " .. dg.levels)) .. "  ·  " .. dg.where .. "|r" },
-        { " " },
-        { C.gold .. "Bosses and loot|r" },
-    }
     local seen = db.drops[dg.name]
+    -- drops RUIN looted, by name, so a listed name without an ID can show the real item
+    local seenByName = {}
+    for id in pairs(seen or {}) do
+        local name = itemInfo(id)
+        if name then seenByName[name:lower()] = id end
+    end
+    local lines = {}
+    if dg.forever then
+        lines[#lines + 1] = { W.TagText("Unverified", "WoW Forever launch data") .. C.dim .. "  From the WoW Forever launch databases ("
+            .. dg.forever .. ")" .. (dg.status and STATUS_TEXT[dg.status] and (", " .. STATUS_TEXT[dg.status]) or "")
+            .. ". Not yet checked by RUIN. \"Looted by RUIN\" is real.|r" }
+    else
+        lines[#lines + 1] = { W.TagText("Sample", "WoW Classic sample") .. C.dim .. "  Level ranges, boss tips and loot lists are Classic's until RUIN records Forever's. \"Looted by RUIN\" is real.|r" }
+    end
+    lines[#lines + 1] = { C.gold .. dg.name .. "|r" }
+    lines[#lines + 1] = { C.dim .. (isRaid and (dg.size .. " players") or ("Levels " .. dg.levels)) .. "  ·  " .. dg.where .. "|r" }
+    -- what's known about the place
+    local function section(title, list)
+        if not list or #list == 0 then return end
+        lines[#lines + 1] = { " " }
+        lines[#lines + 1] = { C.gold .. title .. "|r" }
+        for _, t in ipairs(list) do lines[#lines + 1] = { "    " .. C.dim .. "-|r " .. t } end
+    end
+    section("Quests", dg.quests)
+    if dg.questXP then section("Quest XP", { dg.questXP }) end
+    if dg.attunement then
+        local a = dg.attunement
+        local list = {}
+        if a.alliance and a.alliance ~= "" then list[#list + 1] = "Alliance: " .. a.alliance end
+        if a.horde and a.horde ~= "" then list[#list + 1] = "Horde: " .. a.horde end
+        if a.note and a.note ~= "" then list[#list + 1] = C.dim .. a.note .. "|r" end
+        section("Attunement", list)
+    end
+    if dg.set then
+        local list = {}
+        for _, bn in ipairs(dg.set.bonuses or {}) do list[#list + 1] = "(" .. bn[1] .. ") " .. bn[2] end
+        section("Set: " .. dg.set.name .. (dg.set.pieces and (" (" .. dg.set.pieces .. " pieces)") or ""), list)
+    end
+    section("Notes", dg.notes)
+
+    lines[#lines + 1] = { " " }
+    lines[#lines + 1] = { C.gold .. "Bosses and loot|r" }
     local bosses = loot and loot.bosses or {}
     if #bosses == 0 then
         for _, b in ipairs(dg.bosses) do bosses[#bosses + 1] = { name = b[1], tip = b[2], items = {} } end
     end
+    if #bosses == 0 then lines[#lines + 1] = { "    " .. C.dim .. "No boss list published yet.|r" } end
+    local function itemLine(it)
+        local id = it.id or (it.name and seenByName[it.name:lower()])
+        local _, link
+        if id then _, link = itemInfo(id) end
+        local text = id and itemText(id, it.name) or (C.white .. it.name .. "|r")
+        local info = it.info and ("  " .. C.dim .. "(" .. it.info .. ")|r") or ""
+        return { "    " .. C.dim .. "-|r " .. text .. info .. chanceText(it) .. (id and seenText(seen, id) or ""), link = link }
+    end
     for _, b in ipairs(bosses) do
         lines[#lines + 1] = { C.white .. b.name .. "|r" .. (b.tip and ("  " .. C.dim .. b.tip .. "|r") or "") }
-        for _, it in ipairs(b.items) do
-            local _, link = itemInfo(it.id)
-            lines[#lines + 1] = { "    " .. C.dim .. "-|r " .. itemText(it.id, it.name) .. chanceText(it) .. seenText(seen, it.id), link = link }
-        end
+        for _, it in ipairs(b.items) do lines[#lines + 1] = itemLine(it) end
         if loot and #b.items == 0 then lines[#lines + 1] = { "    " .. C.dim .. "- no list for this boss yet|r" } end
     end
     if loot and loot.trash and #loot.trash > 0 then
         lines[#lines + 1] = { " " }
         lines[#lines + 1] = { C.gold .. "Other drops inside|r" }
-        for _, it in ipairs(loot.trash) do
-            local _, link = itemInfo(it.id)
-            lines[#lines + 1] = { "    " .. C.dim .. "-|r " .. itemText(it.id, it.name) .. chanceText(it) .. seenText(seen, it.id), link = link }
-        end
+        for _, it in ipairs(loot.trash) do lines[#lines + 1] = itemLine(it) end
     end
     -- what RUIN looted that no list has
-    local listed = ns.Loot and ns.Loot.Listed(dg) or {}
+    local listed, listedNames = {}, {}
+    if ns.Loot then listed, listedNames = ns.Loot.Listed(dg) end
     local extra = {}
-    for id in pairs(seen or {}) do if not listed[id] then extra[#extra + 1] = id end end
+    for id in pairs(seen or {}) do
+        local name = itemInfo(id)
+        if not listed[id] and not (name and listedNames[name:lower()]) then extra[#extra + 1] = id end
+    end
     table.sort(extra, function(a, b) return (seen[a].n or 0) > (seen[b].n or 0) end)
     lines[#lines + 1] = { " " }
     lines[#lines + 1] = { C.gold .. (loot and "Also looted by RUIN members" or "Looted by RUIN members") .. "|r" }
@@ -535,10 +581,12 @@ local function journalLines(dg, isRaid)
             .. C.dim .. "  Loot list: " .. (loot.source or "a loot data file") .. "|r" }
     else
         lines[#lines + 1] = { " " }
-        lines[#lines + 1] = { C.dim .. "No loot list for this one yet. Loot lists come from data files (see LootSample.lua).|r" }
+        lines[#lines + 1] = { C.dim .. "No loot list for this one yet. Drops RUIN members loot appear above as they happen.|r" }
     end
     return lines
 end
+
+M.JournalLines = journalLines   -- for tests and other modules
 
 -- Journal text: one line per entry, each as tall as its wrapped text, in a
 -- scrolling column (item lines show the item's tooltip on hover).

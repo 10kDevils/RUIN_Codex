@@ -12,6 +12,7 @@
 --           { "Rhahk'Zor", { 5187, 872 } },        -- boss name, then item IDs
 --           { "Edwin VanCleef", { 5193, { 5191, 18 }, 10399 } },   -- { itemID, drop chance % }
 --           { "Gilnid", { { 1156, name = "Lavishly Jeweled Ring" } } },   -- name: shown until the game sends the item
+--           { "Faldrim Anvilmar", { { name = "Ephemeral Choker", info = "Neck" } } },   -- no ID yet: name and a short description
 --       },
 --       trash = { 1156 },                          -- optional: drops from anything inside
 --   }
@@ -24,7 +25,16 @@ local ADDON, ns = ...
 local Loot = { data = {}, errors = {} }
 ns.Loot = Loot
 
+local function clip(text, n) return (tostring(text):gsub("[|%c]", ""):sub(1, n)) end
+
 local function cleanItem(e)
+    -- a named drop with no item ID yet: { name = "Ephemeral Choker", info = "Neck" }
+    if type(e) == "table" and e[1] == nil and e.id == nil and type(e.name) == "string" and e.name ~= "" then
+        local item = { name = clip(e.name, 60) }
+        if type(e.info) == "string" and e.info ~= "" then item.info = clip(e.info, 80) end
+        return item
+    end
+    if type(e) == "table" and e[1] == nil and tonumber(e.id) then e = { tonumber(e.id), e.chance, name = e.name, note = e.note, info = e.info } end
     if type(e) == "number" then
         if e >= 1 and e < 1000000 and e == math.floor(e) then return { id = e } end
         return nil
@@ -37,6 +47,7 @@ local function cleanItem(e)
         local name = e.name or e[3]
         if type(name) == "string" and name ~= "" then item.name = name:gsub("|", ""):sub(1, 60) end
         if type(e.note) == "string" then item.note = e.note:gsub("|", ""):sub(1, 40) end
+        if type(e.info) == "string" and e.info ~= "" then item.info = clip(e.info, 80) end
         return item
     end
     return nil
@@ -47,7 +58,7 @@ local function cleanList(list, where)
     for _, e in ipairs(type(list) == "table" and list or {}) do
         local item = cleanItem(e)
         if item then out[#out + 1] = item
-        else Loot.errors[#Loot.errors + 1] = where .. ": skipped an entry that isn't an item ID" end
+        else Loot.errors[#Loot.errors + 1] = where .. ": skipped an entry that isn't an item ID or a named item" end
     end
     return out
 end
@@ -97,14 +108,19 @@ function Loot.For(entry)
     return out
 end
 
--- Every item ID listed for an instance (to tell listed drops from new ones).
+-- Every item listed for an instance (to tell listed drops from new ones):
+-- item IDs, and the names of drops listed without an ID (lowercase, under names).
 function Loot.Listed(entry)
-    local set = {}
+    local set, names = {}, {}
     local d = Loot.For(entry)
-    if not d then return set end
-    for _, b in ipairs(d.bosses) do for _, it in ipairs(b.items) do set[it.id] = true end end
-    for _, it in ipairs(d.trash or {}) do set[it.id] = true end
-    return set
+    if not d then return set, names end
+    local function add(it)
+        if it.id then set[it.id] = true end
+        if it.name then names[it.name:lower()] = true end
+    end
+    for _, b in ipairs(d.bosses) do for _, it in ipairs(b.items) do add(it) end end
+    for _, it in ipairs(d.trash or {}) do add(it) end
+    return set, names
 end
 
 -- Data files call ns.AddLoot(...) while the addon loads.
