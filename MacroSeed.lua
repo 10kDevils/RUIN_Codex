@@ -261,6 +261,48 @@ m("DRUID", nil, "Utility", "Roots Mo", "#showtooltip Entangling Roots\n/cast " .
 m("DRUID", "Balance", "Combat", "Moonfire/Wrath", "#showtooltip\n/cast [modifier:shift] Moonfire; Wrath",
     "Wrath, or Moonfire while holding Shift.", { "Wrath" })
 
+-- Every heal and damage-over-time spell on mouseover ----------------------
+-- Heals go to your mouseover, then your target, then yourself; DoTs go to your
+-- mouseover enemy, else your target, so you can spread them without retargeting.
+m("PALADIN", "Holy", "Combat", "Holy Shock Mo", "#showtooltip Holy Shock\n/cast [@mouseover,exists,nodead][] Holy Shock",
+    "Holy Shock your mouseover: it heals a friend or hurts an enemy. Else your target.", { "Holy Shock" })
+m("PRIEST", nil, "Combat", "Heal Mo", "#showtooltip Heal\n/cast " .. HELP .. " Heal",
+    "Heal on your mouseover, then target, then yourself.", { "Heal" })
+m("PRIEST", nil, "Combat", "Lesser Heal Mo", "#showtooltip Lesser Heal\n/cast " .. HELP .. " Lesser Heal",
+    "Lesser Heal on your mouseover, then target, then yourself.", { "Lesser Heal" })
+m("PRIEST", nil, "Combat", "Holy Fire Mo", "#showtooltip Holy Fire\n/cast " .. HARM .. " Holy Fire",
+    "Holy Fire, and its burn, on your mouseover enemy, or your target.", { "Holy Fire" })
+m("PRIEST", "Shadow", "Combat", "Plague Mo", "#showtooltip Devouring Plague\n/cast " .. HARM .. " Devouring Plague",
+    "Devouring Plague on your mouseover enemy, or your target. Undead priests only.", { "Devouring Plague" })
+m("PRIEST", "Shadow", "Combat", "Embrace Mo", "#showtooltip Vampiric Embrace\n/cast " .. HARM .. " Vampiric Embrace",
+    "Vampiric Embrace on your mouseover enemy, or your target.", { "Vampiric Embrace" })
+m("DRUID", "Restoration", "Combat", "Swiftmend Mo", "#showtooltip Swiftmend\n/cast " .. HELP .. " Swiftmend",
+    "Swiftmend on your mouseover, then target, then yourself. Needs your Rejuvenation or Regrowth on them.", { "Swiftmend" })
+m("DRUID", nil, "Combat", "Moonfire Mo", "#showtooltip Moonfire\n/cast " .. HARM .. " Moonfire",
+    "Moonfire your mouseover enemy, or your target.", { "Moonfire" })
+m("DRUID", "Balance", "Combat", "Swarm Mo", "#showtooltip Insect Swarm\n/cast " .. HARM .. " Insect Swarm",
+    "Insect Swarm on your mouseover enemy, or your target.", { "Insect Swarm" })
+m("DRUID", "Feral (cat)", "Combat", "Rake Mo", "#showtooltip Rake\n/startattack\n/cast " .. HARM .. " Rake",
+    "Rake your mouseover enemy, or your target, and keep attacking.", { "Rake" })
+m("DRUID", "Feral (cat)", "Combat", "Rip Mo", "#showtooltip Rip\n/cast " .. HARM .. " Rip",
+    "Rip your mouseover enemy, or your target.", { "Rip" })
+m("WARLOCK", nil, "Combat", "Agony Mo", "#showtooltip Curse of Agony\n/cast " .. HARM .. " Curse of Agony",
+    "Curse of Agony on your mouseover enemy, or your target.", { "Curse of Agony" })
+m("WARLOCK", nil, "Combat", "Doom Mo", "#showtooltip Curse of Doom\n/cast " .. HARM .. " Curse of Doom",
+    "Curse of Doom on your mouseover enemy, or your target.", { "Curse of Doom" })
+m("HUNTER", nil, "Combat", "Viper Mo", "#showtooltip Viper Sting\n/cast " .. HARM .. " Viper Sting",
+    "Viper Sting your mouseover enemy, or your target: drains their mana.", { "Viper Sting" })
+m("HUNTER", nil, "Combat", "Scorpid Mo", "#showtooltip Scorpid Sting\n/cast " .. HARM .. " Scorpid Sting",
+    "Scorpid Sting your mouseover enemy, or your target.", { "Scorpid Sting" })
+m("HUNTER", "Survival", "Utility", "Wyvern Mo", "#showtooltip Wyvern Sting\n/cast " .. HARM .. " Wyvern Sting",
+    "Wyvern Sting your mouseover enemy, or your target: sleep, then poison.", { "Wyvern Sting" })
+m("ROGUE", nil, "Combat", "Rupture Mo", "#showtooltip Rupture\n/startattack\n/cast " .. HARM .. " Rupture",
+    "Rupture your mouseover enemy, or your target.", { "Rupture" })
+m("ROGUE", nil, "Combat", "Garrote Mo", "#showtooltip Garrote\n/cast [stealth,@mouseover,harm,nodead][stealth] Garrote",
+    "Garrote your mouseover enemy, or your target, from stealth.", { "Garrote" })
+m("WARRIOR", nil, "Combat", "Rend Mo", "#showtooltip Rend\n/startattack\n/cast " .. HARM .. " Rend",
+    "Rend your mouseover enemy, or your target, and keep attacking.", { "Rend" })
+
 -- Ids: class and name, lowercase, so a macro keeps its identity ("mage-stop-frostbolt").
 for _, rec in ipairs(list) do
     rec.id = (rec.c .. "-" .. rec.n):lower():gsub("[^%w]+", "-"):gsub("^%-+", ""):gsub("%-+$", "")

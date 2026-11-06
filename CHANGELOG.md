@@ -11,6 +11,7 @@ Versioning: the third number counts the meaningful changes made since the second
 - The ranged slot is scored properly. A ranged weapon's damage per second now counts with its own weight (RDPS) instead of the melee one: casters weigh their wand (Mage, Warlock and Shadow priest 0.9, healing priests lower), hunters weigh their bow, gun or crossbow far above their melee weapon (melee DPS 0.4-0.6, ranged 2.6-3.0), and warriors and rogues weigh it low since it only pulls. Before, a wand with no stats had nothing a caster's spec weighed, so it got no upgrade line, and a hunter's bow counted the same as a melee weapon.
 - A weapon's "(12.5 damage per second)" tooltip line is read when the item API leaves the damage out.
 - On Retail, which has no ranged slot, bows, guns and wands are compared with the main hand.
+- 19 new class macros (132 in all): every heal and every damage-over-time spell now has a mouseover macro. Heals go to your mouseover, then your target, then yourself; DoTs go to your mouseover enemy, else your target. New: Holy Shock (heals a friend or hurts an enemy), Heal, Lesser Heal, Holy Fire, Devouring Plague, Vampiric Embrace, Swiftmend, Moonfire, Insect Swarm, Rake, Rip, Curse of Agony, Curse of Doom, Viper Sting, Scorpid Sting, Wyvern Sting, Rupture, Garrote (from stealth) and Rend.
 
 ## 0.5.2 — 2026-11-05
 
