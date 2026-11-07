@@ -17,7 +17,7 @@ local C = W.COLORS
 local M = R:RegisterModule("Codex", { version = "0.5.3" })
 ns.Codex = M
 
-local DEFAULTS = { drops = {}, kills = {}, mobs = {}, tooltip = true, spec = "Auto", installed = {} }
+local DEFAULTS = { drops = {}, kills = {}, mobs = {}, collapsed = {}, tooltip = true, spec = "Auto", installed = {} }
 local CLASSES = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "WARLOCK", "DRUID" }
 
 -- "WARRIOR" -> "Warrior" (the game's own name when it has one).
@@ -1008,9 +1008,8 @@ local function questLines(lines, dg)
     local PF = R:GetModule("Pathfinder")
     local list, why
     if PF and PF.DungeonQuests then list, why = PF:DungeonQuests(dg.name) end
-    lines[#lines + 1] = { " " }
     if not list then
-        lines[#lines + 1] = { C.gold .. "Quests|r" }
+        lines[#lines + 1] = { C.gold .. "Quests|r", header = "quests", title = "Quests" }
         for _, t in ipairs(dg.quests or {}) do lines[#lines + 1] = { "    " .. C.dim .. "-|r " .. t } end
         local hint = not PF and "Install RUIN Pathfinder (with Questie) to see every quest for your faction, where it starts, the quests that unlock it, and a route through them."
             or ("Quest details: " .. tostring(why or "not available").. ".")
@@ -1020,13 +1019,14 @@ local function questLines(lines, dg)
     local done = 0
     for _, q in ipairs(list) do if q.state == "done" then done = done + 1 end end
     local faction = UnitFactionGroup and UnitFactionGroup("player") or "your faction"
-    lines[#lines + 1] = { C.gold .. "Quests for " .. faction .. "|r  " .. C.dim .. ("%d quest%s, %d done · from Questie"):format(#list, #list == 1 and "" or "s", done) .. "|r" }
+    local qsub = ("%d quest%s, %d done · from Questie"):format(#list, #list == 1 and "" or "s", done)
+    lines[#lines + 1] = { C.gold .. "Quests for " .. faction .. "|r  " .. C.dim .. qsub .. "|r", header = "quests", title = "Quests for " .. faction, sub = qsub }
     if #list == 0 then
         lines[#lines + 1] = { "    " .. C.dim .. "Questie lists no quests here for your character yet.|r" }
         for _, t in ipairs(dg.quests or {}) do lines[#lines + 1] = { "    " .. C.dim .. "- " .. t .. " (launch data)|r" } end
         return
     end
-    lines[#lines + 1] = { "    " .. C.good .. "> Open the quest route in Pathfinder|r  " .. C.dim .. "every quest here and the ones that unlock them, in order|r",
+    lines[#lines + 1] = { "    " .. (W.AddonHex and W.AddonHex("Pathfinder") or C.good) .. "> Open the quest route in Pathfinder|r  " .. C.dim .. "every quest here and the ones that unlock them, in order|r",
         action = function() PF:OpenDungeonRoute(dg.name) end,
         tip = { "Quest route", "Starts a Pathfinder route through every quest above: the quests that unlock them first, then the pick-ups, the run and the hand-ins." } }
     local function qname(id)
@@ -1099,10 +1099,14 @@ local function journalLines(dg, isRaid)
     lines[#lines + 1] = { C.gold .. dg.name .. "|r" }
     lines[#lines + 1] = { C.dim .. (isRaid and (dg.size .. " players") or ("Levels " .. dg.levels)) .. "  ·  " .. dg.where .. "|r" }
     -- what's known about the place
+    local aboutOpen = false
     local function section(title, list)
         if not list or #list == 0 then return end
-        lines[#lines + 1] = { " " }
-        lines[#lines + 1] = { C.gold .. title .. "|r" }
+        if not aboutOpen then
+            aboutOpen = true
+            lines[#lines + 1] = { C.gold .. "About this dungeon|r", header = "about", title = isRaid and "About this raid" or "About this dungeon" }
+        end
+        lines[#lines + 1] = { C.white .. title .. "|r" }
         for _, t in ipairs(list) do lines[#lines + 1] = { "    " .. C.dim .. "-|r " .. t } end
     end
     questLines(lines, dg)
@@ -1122,8 +1126,7 @@ local function journalLines(dg, isRaid)
     end
     section("Notes", dg.notes)
 
-    lines[#lines + 1] = { " " }
-    lines[#lines + 1] = { C.gold .. "Bosses and loot|r" }
+    lines[#lines + 1] = { C.gold .. "Bosses and loot|r", header = "loot", title = "Bosses and loot" }
     if QL.state == "building" and not fromQuestie then
         lines[#lines + 1] = { "    " .. C.dim .. "Reading every dungeon's loot from " .. (QL.Source() or "QuestieDB") .. " (a few seconds, once)...|r" }
     elseif not fromQuestie and not QL.Source() and dg.areas then
@@ -1159,8 +1162,8 @@ local function journalLines(dg, isRaid)
         end
     end
     if loot and loot.trash and #loot.trash > 0 then
-        lines[#lines + 1] = { " " }
-        lines[#lines + 1] = { C.gold .. (fromQuestie and "Trash|r  " .. C.dim .. "drops from the dungeon's other mobs|r" or "Other drops inside|r") }
+        lines[#lines + 1] = { C.gold .. (fromQuestie and "Trash|r  " .. C.dim .. "drops from the dungeon's other mobs|r" or "Other drops inside|r"),
+            header = "trash", title = fromQuestie and "Trash" or "Other drops inside", sub = fromQuestie and "drops from the dungeon's other mobs" or nil }
         for _, it in ipairs(loot.trash) do lines[#lines + 1] = itemLine(it) end
     end
     local listed, listedNames = {}, {}
@@ -1177,10 +1180,9 @@ local function journalLines(dg, isRaid)
         if not isListed(id) then general[#general + 1] = { id = id, n = n } end
     end
     table.sort(general, function(a, b) if a.n ~= b.n then return a.n > b.n end return a.id < b.id end)
-    lines[#lines + 1] = { " " }
     local looted = mobs and mobs.n or 0
-    lines[#lines + 1] = { C.gold .. "General|r  " .. C.dim .. "greens and blues from the mobs inside"
-        .. (looted > 0 and (" · " .. looted .. " mob" .. (looted == 1 and "" or "s") .. " looted by RUIN") or "") .. "|r" }
+    local gsub = "greens and blues from the mobs inside" .. (looted > 0 and (" · " .. looted .. " mob" .. (looted == 1 and "" or "s") .. " looted by RUIN") or "")
+    lines[#lines + 1] = { C.gold .. "General|r  " .. C.dim .. gsub .. "|r", header = "general", title = "General", sub = gsub }
     for i, g in ipairs(general) do
         if i > 60 then
             lines[#lines + 1] = { "    " .. C.dim .. ("and %d more"):format(#general - 60) .. "|r" }
@@ -1200,21 +1202,21 @@ local function journalLines(dg, isRaid)
         if not isListed(id) and not inGeneral[id] then extra[#extra + 1] = id end
     end
     table.sort(extra, function(a, b) return (seen[a].n or 0) > (seen[b].n or 0) end)
-    lines[#lines + 1] = { " " }
-    lines[#lines + 1] = { C.gold .. (loot and "Also looted by RUIN members" or "Looted by RUIN members") .. "|r" }
+    local alsoTitle = loot and "Also looted by RUIN members" or "Looted by RUIN members"
+    lines[#lines + 1] = { C.gold .. alsoTitle .. "|r", header = "also", title = alsoTitle }
     for _, id in ipairs(extra) do
         lines[#lines + 1] = { itemText(id) .. C.dim .. "  x" .. (seen[id].n or 1) .. "|r", link = linkFor(id) }
     end
     if #extra == 0 then
         lines[#lines + 1] = { C.dim .. (loot and "Nothing beyond the list yet." or "Nothing yet. Drops appear here as RUIN members loot them.") .. "|r" }
     end
+    -- where the loot list comes from: always shown, under the last section
     if loot then
-        lines[#lines + 1] = { " " }
+        local src = loot.source == "questie" and ((QL.Source() or "QuestieDB") .. "'s WoW Forever database, read while you play") or (loot.source or "a loot data file")
         lines[#lines + 1] = { (loot.verified and W.TagText("Verified", "Checked on Forever") or W.TagText("Unverified", "Not checked on Forever"))
-            .. C.dim .. "  Loot list: " .. (loot.source or "a loot data file") .. "|r" }
+            .. C.dim .. "  Loot list: " .. src .. "|r", always = true }
     else
-        lines[#lines + 1] = { " " }
-        lines[#lines + 1] = { C.dim .. "No loot list for this one yet. Drops RUIN members loot appear above as they happen.|r" }
+        lines[#lines + 1] = { C.dim .. "No loot list for this one yet. Drops RUIN members loot appear above as they happen.|r", always = true }
     end
     return lines
 end
@@ -1248,6 +1250,47 @@ end
 
 -- Journal text: one line per entry, each as tall as its wrapped text, in a
 -- scrolling column (item lines show the item's tooltip on hover).
+-- Journal sections fold: a header line ({ header = key, title, sub }) owns
+-- the lines after it up to the next header. Quests start folded; the rest
+-- start open, and what you fold stays folded (per section, every dungeon).
+local FOLDED_AT_FIRST = { quests = true }
+local PLUS, MINUS = "|TInterface\\Buttons\\UI-PlusButton-Up:16:16|t", "|TInterface\\Buttons\\UI-MinusButton-Up:16:16|t"
+local function isFolded(key)
+    local v = type(db.collapsed) == "table" and db.collapsed[key]
+    if v == nil then return FOLDED_AT_FIRST[key] or false end
+    return v == true
+end
+M.IsFolded = isFolded
+
+local function foldLines(lines)
+    local counts, k = {}, nil
+    for _, l in ipairs(lines) do
+        if l.header then k = l.header; counts[k] = 0
+        elseif k and l[1] ~= " " and not l.always then counts[k] = counts[k] + 1 end
+    end
+    local out, cur, folded = {}, nil, false
+    for _, l in ipairs(lines) do
+        if l.header then
+            local key = l.header
+            cur, folded = key, isFolded(key)
+            local text = (folded and PLUS or MINUS) .. " " .. C.gold .. (l.title or key) .. "|r"
+                .. (l.sub and ("  " .. C.dim .. l.sub .. "|r") or "")
+                .. (folded and not l.sub and counts[key] > 0 and ("  " .. C.dim .. "(click to show)|r") or "")
+            out[#out + 1] = { text, header = key, folded = folded, action = function()
+                db.collapsed = type(db.collapsed) == "table" and db.collapsed or {}
+                db.collapsed[key] = not isFolded(key)
+                refreshPage()
+            end }
+        elseif l.always then
+            out[#out + 1] = l
+        elseif l[1] ~= " " and not (cur and folded) then     -- spacers go: the headers set the sections apart
+            out[#out + 1] = l
+        end
+    end
+    return out
+end
+M.FoldLines = foldLines
+
 local function detailList(parent)
     local sf = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
     local child = CreateFrame("Frame", nil, sf)
@@ -1297,16 +1340,42 @@ local function detailList(parent)
                 end)
                 self.rows[i] = row
             end
+            -- a section header: a tinted band with the page's color along its left edge
+            if line.header and not row.band then
+                local c = W.SchemeOf(row).accent
+                row.band = row:CreateTexture(nil, "BACKGROUND")
+                row.band:SetAllPoints()
+                row.band:SetColorTexture(c[1], c[2], c[3], 0.16)
+                row.bandEdge = row:CreateTexture(nil, "ARTWORK")
+                row.bandEdge:SetPoint("TOPLEFT")
+                row.bandEdge:SetPoint("BOTTOMLEFT")
+                row.bandEdge:SetWidth(3)
+                row.bandEdge:SetColorTexture(c[1], c[2], c[3], 0.9)
+                row.bandLine = row:CreateTexture(nil, "ARTWORK")
+                row.bandLine:SetPoint("BOTTOMLEFT")
+                row.bandLine:SetPoint("BOTTOMRIGHT")
+                row.bandLine:SetHeight(1)
+                row.bandLine:SetColorTexture(c[1], c[2], c[3], 0.45)
+            end
+            if row.band then
+                row.band:SetShown(line.header ~= nil)
+                row.bandEdge:SetShown(line.header ~= nil)
+                row.bandLine:SetShown(line.header ~= nil)
+            end
+            if line.header and i > 1 then y = y + 10 end            -- room above each section
             row:ClearAllPoints()
             row:SetPoint("TOPLEFT", child, "TOPLEFT", 0, -y)
             row:SetPoint("RIGHT", child, "RIGHT", 0, 0)
-            row.text:SetWidth(width - 8)
+            row.text:SetWidth(width - 14)
+            row.text:ClearAllPoints()
+            row.text:SetPoint("TOPLEFT", line.header and 8 or 4, line.header and -4 or 0)
             row.text:SetText(line[1])
             row.link = line.link
             row.itemName, row.itemInfo = not line.link and line.name or nil, line.info
             row.quest, row.action, row.tipLines = line.quest, line.action, line.tip
             local blank = line[1] == " "
             local h = blank and 6 or math.max(14, row.text:GetStringHeight() or 14)
+            if line.header then h = math.max(24, h + 8) end
             row:SetHeight(h)
             row:Show()
             y = y + h + (blank and 0 or 6)
@@ -1402,6 +1471,7 @@ local function buildJournal(page)
         if entry and PF and PF.OpenDungeonRoute then PF:OpenDungeonRoute(entry.name) end
     end)
     ui.questRoute:SetPoint("RIGHT", ui.runPost, "LEFT", -6, 0)
+    if W.LinkTo then W.LinkTo(ui.runPost, "Muster"); W.LinkTo(ui.questRoute, "Pathfinder") end
     ui.questRoute.tip = "Open a RUIN Pathfinder route through every quest of this dungeon for your character, with the quests that unlock them."
     ui.runs = W.Label(card, "", "GameFontHighlightSmall")
     ui.runs:SetPoint("TOPLEFT", 10, -88)
@@ -1421,7 +1491,7 @@ local function refreshJournal()
     local list, sel = journalEntries()
     ui.entries:SetItems(list)
     local entry = list[sel] or list[1]
-    ui.detail:SetItems(entry and journalLines(entry, raids) or {})
+    ui.detail:SetItems(entry and foldLines(journalLines(entry, raids)) or {})
     ui.sizeBtn:SetShown(raids)
     ui.sizeFixed:SetShown(not raids)
     if raids then ui.sizeBtn.Refresh() end
