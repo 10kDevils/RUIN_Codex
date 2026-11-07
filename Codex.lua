@@ -1443,23 +1443,25 @@ local function refreshJournal()
         or (#runs > 0 and (C.good .. "Upcoming: |r" .. table.concat(runs, ",  ")) or (C.dim .. "No run scheduled yet.|r")))
 end
 
+local TAB_JOURNAL, TAB_MACROS = 1, 2      -- the Journal comes first
+
 local function buildPage(panel)
     ui.panel = panel
-    ui.tabs = W.SubTabs(panel, { "Macros", "Journal" }, function() refreshPage() end)
-    if ns.Macros then ns.Macros.Build(ui.tabs.pages[1]) end
-    buildJournal(ui.tabs.pages[2])
+    ui.tabs = W.SubTabs(panel, { "Journal", "Macros" }, function() refreshPage() end)
+    buildJournal(ui.tabs.pages[TAB_JOURNAL])
+    if ns.Macros then ns.Macros.Build(ui.tabs.pages[TAB_MACROS]) end
 
     refreshPage = function()
         if not ui.panel:IsVisible() then return end
         local tab = ui.tabs.selected
-        if tab == 1 then
+        if tab == TAB_MACROS then
             if ns.Macros then ns.Macros.Refresh() end
-        elseif tab == 2 then
+        elseif tab == TAB_JOURNAL then
             refreshJournal()
         end
     end
     panel:SetScript("OnShow", function() refreshPage() end)
-    ui.tabs:Select(1)
+    ui.tabs:Select(TAB_JOURNAL)
 end
 
 ---------------------------------------------------------------------------
@@ -1565,11 +1567,11 @@ SLASH_RUINCODEX1 = "/codex"
 SlashCmdList.RUINCODEX = function(msg)
     msg = (msg or ""):lower()
     local cmd, rest = msg:match("^(%S*)%s*(.*)$")
-    local tab = 1
-    if cmd == "journal" or cmd == "dungeons" then tab = 2; if cmd == "dungeons" then ui.jmode = "Dungeons" end
-    elseif cmd == "raids" or cmd == "raid" then tab = 2; ui.jmode = "Raids"
-    elseif cmd == "macros" or cmd == "macro" then tab = 1; if ns.Macros then ns.Macros.SetMode("macros") end
-    elseif cmd == "commands" or cmd == "cmds" then tab = 1; if ns.Macros then ns.Macros.SetMode("commands") end
+    local tab = TAB_JOURNAL
+    if cmd == "journal" or cmd == "dungeons" then tab = TAB_JOURNAL; if cmd == "dungeons" then ui.jmode = "Dungeons" end
+    elseif cmd == "raids" or cmd == "raid" then tab = TAB_JOURNAL; ui.jmode = "Raids"
+    elseif cmd == "macros" or cmd == "macro" then tab = TAB_MACROS; if ns.Macros then ns.Macros.SetMode("macros") end
+    elseif cmd == "commands" or cmd == "cmds" then tab = TAB_MACROS; if ns.Macros then ns.Macros.SetMode("commands") end
     elseif cmd == "path" or cmd == "gear" or cmd == "bis" or cmd == "upgrades" then
         return M:Print("Gear Path and best-in-slot lists have left Codex; RUIN will work with a gear addon for them. Item tooltips still show the upgrade line.")
     elseif cmd == "spec" then
@@ -1580,10 +1582,10 @@ SlashCmdList.RUINCODEX = function(msg)
         return
     elseif msg ~= "" then
         for i, dg in ipairs(ns.Dungeons) do
-            if dg.name:lower():find(msg, 1, true) or dg.id == msg then ui.selected = i; ui.jmode = "Dungeons"; tab = 2 end
+            if dg.name:lower():find(msg, 1, true) or dg.id == msg then ui.selected = i; ui.jmode = "Dungeons"; tab = TAB_JOURNAL end
         end
         for i, r in ipairs(ns.Raids) do
-            if r.name:lower():find(msg, 1, true) or r.id == msg then ui.raid = i; ui.jmode = "Raids"; tab = 2 end
+            if r.name:lower():find(msg, 1, true) or r.id == msg then ui.raid = i; ui.jmode = "Raids"; tab = TAB_JOURNAL end
         end
     end
     M:OpenTab()
