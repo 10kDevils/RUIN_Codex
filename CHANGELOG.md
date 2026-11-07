@@ -8,6 +8,8 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## 0.5.3 — 2026-11-06
 
+- Journal hover: an item shows its tooltip only with the mouse over its name, not anywhere along the row; lines with nothing to show no longer react at all.
+- Journal scrolling: the wheel glides, a faint weave behind the text moves with it, and the top and bottom edges fade while there's more to scroll. The dungeon list glides too.
 - Journal sections stand apart and fold: Quests, About this dungeon (quest XP, attunement, set, notes), Bosses and loot, Trash, General and Also looted each have a header band; click it to fold or open the section. Quests start folded; whatever you fold stays folded for every dungeon.
 - *Post in Muster* wears Muster's orange and *Quest route* Pathfinder's green, like the quest list's route line.
 - The Journal is Codex's first tab, before Macros, and Codex (and plain `/codex`) opens on it.

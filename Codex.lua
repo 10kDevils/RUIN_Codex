@@ -1058,7 +1058,8 @@ local function questLines(lines, dg)
         if rewards then
             for _, rw in ipairs(rewards) do
                 local id = rw.id
-                lines[#lines + 1] = { "        " .. C.dim .. "Reward:|r " .. itemText(id, rw.name), link = linkFor(id) }
+                lines[#lines + 1] = { "        " .. C.dim .. "Reward:|r " .. itemText(id, rw.name), link = linkFor(id),
+                    hit = "        " .. C.dim .. "Reward:|r " .. itemText(id, rw.name) }
             end
         end
     end
@@ -1149,7 +1150,8 @@ local function journalLines(dg, isRaid)
         local slot = it.info or (id and slotText(id)) or (it.quest and "quest item") or nil
         local info = slot and ("  " .. C.dim .. "(" .. slot .. ")|r") or ""
         local track = (k and k > 0) and trackText(seen, id, k) or (chanceText(it) .. (id and seenText(seen, id) or ""))
-        return { "    " .. C.dim .. "-|r " .. text .. info .. track, link = linkFor(id), name = it.name, info = it.info }
+        return { "    " .. C.dim .. "-|r " .. text .. info .. track, link = linkFor(id), name = it.name, info = it.info,
+                 hit = "    " .. C.dim .. "-|r " .. text }
     end
     for _, b in ipairs(bosses) do
         local k = killsOf(b.name)
@@ -1188,7 +1190,7 @@ local function journalLines(dg, isRaid)
             lines[#lines + 1] = { "    " .. C.dim .. ("and %d more"):format(#general - 60) .. "|r" }
             break
         end
-        lines[#lines + 1] = { "    " .. C.dim .. "-|r " .. itemText(g.id) .. "  " .. C.dim .. ("x%d"):format(g.n)
+        lines[#lines + 1] = { hit = "    " .. C.dim .. "-|r " .. itemText(g.id), "    " .. C.dim .. "-|r " .. itemText(g.id) .. "  " .. C.dim .. ("x%d"):format(g.n)
             .. (looted > 0 and (" · about " .. pctText(math.min(g.n, looted), looted) .. " per mob") or "") .. "|r", link = linkFor(g.id) }
     end
     if #general == 0 then
@@ -1205,7 +1207,7 @@ local function journalLines(dg, isRaid)
     local alsoTitle = loot and "Also looted by RUIN members" or "Looted by RUIN members"
     lines[#lines + 1] = { C.gold .. alsoTitle .. "|r", header = "also", title = alsoTitle }
     for _, id in ipairs(extra) do
-        lines[#lines + 1] = { itemText(id) .. C.dim .. "  x" .. (seen[id].n or 1) .. "|r", link = linkFor(id) }
+        lines[#lines + 1] = { itemText(id) .. C.dim .. "  x" .. (seen[id].n or 1) .. "|r", link = linkFor(id), hit = itemText(id) }
     end
     if #extra == 0 then
         lines[#lines + 1] = { C.dim .. (loot and "Nothing beyond the list yet." or "Nothing yet. Drops appear here as RUIN members loot them.") .. "|r" }
@@ -1296,7 +1298,19 @@ local function detailList(parent)
     local child = CreateFrame("Frame", nil, sf)
     child:SetSize(10, 10)
     sf:SetScrollChild(child)
+    if W.SmoothScroll then W.SmoothScroll(sf, 72) end
+    if W.ScrollDressing then W.ScrollDressing(sf, child) end
     local obj = { frame = sf, rows = {} }
+    local measure = child:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    measure:Hide()
+    -- how wide a piece of text draws (the hover area of an item row is its name)
+    local function widthOf(text, base)
+        if not text then return nil end
+        local f, sz, fl = base:GetFont()
+        if f then measure:SetFont(f, sz, fl) end
+        measure:SetText(text)
+        return measure:GetStringWidth()
+    end
     function obj:SetItems(lines)
         local width = math.max(120, (sf:GetWidth() or 400) - 4)
         child:SetWidth(width)
@@ -1376,6 +1390,15 @@ local function detailList(parent)
             local blank = line[1] == " "
             local h = blank and 6 or math.max(14, row.text:GetStringHeight() or 14)
             if line.header then h = math.max(24, h + 8) end
+            -- only rows with something to show or do take the mouse, and only over their text
+            local interactive = line.header or line.link or line.name or line.quest or line.action or line.tip
+            row:EnableMouse(interactive and true or false)
+            if interactive and row.SetHitRectInsets then
+                local left = line.header and 8 or 4
+                local w = tonumber(widthOf(line.hit, row.text) or (line.header and (width - left)) or row.text:GetStringWidth()) or (width - left)
+                w = math.min(w, width - left - 8)
+                row:SetHitRectInsets(0, math.max(0, width - (left + w + 6)), 0, 0)
+            end
             row:SetHeight(h)
             row:Show()
             y = y + h + (blank and 0 or 6)
@@ -1433,6 +1456,7 @@ local function buildJournal(page)
             refreshPage()
         end)
     end)
+    if W.SmoothScroll then W.SmoothScroll(ui.entries.frame, 56) end
     ui.entries.frame:SetPoint("TOPLEFT", 0, -32)
     ui.entries.frame:SetPoint("BOTTOMLEFT", 0, 62)
     ui.entries.frame:SetWidth(176)
