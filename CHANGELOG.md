@@ -8,6 +8,8 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## 0.5.3 — 2026-11-06
 
+- Every classic dungeon in the Journal: The Stockade, Blackfathom Deeps, Gnomeregan, Razorfen Kraul, Scarlet Monastery, Razorfen Downs, Uldaman, Zul'Farrak, Maraudon, Sunken Temple, Blackrock Depths, Dire Maul, Blackrock Spire, Scholomance and Stratholme, plus the raids Blackwing Lair, Temple of Ahn'Qiraj and Naxxramas. Each has its level range, entrance and bosses with a one-line tip, the dungeon's quests and Quest route, and RUIN's kill, drop and General tracking. Loot lists come when the data does.
+
 - Dungeon quests in the Journal: every quest the dungeon has for your race and class, in level order, each with its level and required level, whether you've done it, have it, are ready to hand it in, need more levels or must do the quests before it first; where it starts and is handed in (marked "inside" when that's in the dungeon); the quests that unlock it, in order, with the ones you've done; and its rewards (from Ruinous Forever Planner's dungeon lists, when installed; click a reward for its tooltip). Click a quest to mark where it starts (or, once you have it, where to go next) on your map. Read from Questie or QuestieDB through RUIN Pathfinder; without them the Journal shows the launch data's quest names and says what to install.
 - *Quest route* (beside *Post in Muster*, and a line at the top of the quest list) starts RUIN Pathfinder's route through all of the dungeon's quests and the ones that unlock them.
 
