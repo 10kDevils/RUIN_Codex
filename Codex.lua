@@ -747,7 +747,110 @@ end
 local STATUS_TEXT = { complete = "fully documented", strong = "well documented", partial = "partly documented",
                       story_only = "story only, no boss list yet", minimal = "little published yet" }
 
+---------------------------------------------------------------------------
+-- Dungeon quests: every quest the dungeon has for your race and class, with
+-- where it starts, the quests that unlock it, its rewards and whether you've
+-- done it. RUIN Pathfinder reads them from Questie (or QuestieDB); without
+-- them the Journal shows the launch data's quest names.
+---------------------------------------------------------------------------
+local STATE_TEXT = {
+    done = { "Done", "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t" },
+    ready = { "Ready to hand in", "|TInterface\\GossipFrame\\ActiveQuestIcon:14:14|t" },
+    active = { "In your quest log", "|TInterface\\GossipFrame\\IncompleteQuestIcon:14:14|t" },
+    available = { "Available", "|TInterface\\GossipFrame\\AvailableQuestIcon:14:14|t" },
+    low = { "Needs level %d", "|TInterface\\GossipFrame\\AvailableQuestIcon:14:14|t" },
+    locked = { "Do the quests before it first", "|TInterface\\GossipFrame\\AvailableQuestIcon:14:14|t" },
+}
+
+-- Quest rewards from Ruinous Forever Planner's dungeon lists, when it's installed.
+local rewardIndex
+local function questRewards(qid)
+    if rewardIndex == nil then
+        rewardIndex = false
+        local P = rawget(_G, "RuinousForeverPlanner")
+        local ed = type(P) == "table" and type(P.EfficiencyData) == "table" and P.EfficiencyData.dungeons
+        if type(ed) == "table" then
+            rewardIndex = {}
+            for _, d in ipairs(ed) do
+                for _, it in ipairs(type(d.items) == "table" and d.items or {}) do
+                    local q, id = tonumber(it.questID), tonumber(it.id)
+                    if q and id then
+                        local list = rewardIndex[q] or {}
+                        local dup = false
+                        for _, x in ipairs(list) do if x.id == id then dup = true end end
+                        if not dup then list[#list + 1] = { id = id, name = it.name } end
+                        rewardIndex[q] = list
+                    end
+                end
+            end
+        end
+    end
+    return rewardIndex and rewardIndex[qid] or nil
+end
+M.QuestRewards = questRewards
+
+local function questLines(lines, dg)
+    local PF = R:GetModule("Pathfinder")
+    local list, why
+    if PF and PF.DungeonQuests then list, why = PF:DungeonQuests(dg.name) end
+    lines[#lines + 1] = { " " }
+    if not list then
+        lines[#lines + 1] = { C.gold .. "Quests|r" }
+        for _, t in ipairs(dg.quests or {}) do lines[#lines + 1] = { "    " .. C.dim .. "-|r " .. t } end
+        local hint = not PF and "Install RUIN Pathfinder (with Questie) to see every quest for your faction, where it starts, the quests that unlock it, and a route through them."
+            or ("Quest details: " .. tostring(why or "not available").. ".")
+        lines[#lines + 1] = { "    " .. C.dim .. hint .. "|r" }
+        return
+    end
+    local done = 0
+    for _, q in ipairs(list) do if q.state == "done" then done = done + 1 end end
+    local faction = UnitFactionGroup and UnitFactionGroup("player") or "your faction"
+    lines[#lines + 1] = { C.gold .. "Quests for " .. faction .. "|r  " .. C.dim .. ("%d quest%s, %d done · from Questie"):format(#list, #list == 1 and "" or "s", done) .. "|r" }
+    if #list == 0 then
+        lines[#lines + 1] = { "    " .. C.dim .. "Questie lists no quests here for your character yet.|r" }
+        for _, t in ipairs(dg.quests or {}) do lines[#lines + 1] = { "    " .. C.dim .. "- " .. t .. " (launch data)|r" } end
+        return
+    end
+    lines[#lines + 1] = { "    " .. C.good .. "> Open the quest route in Pathfinder|r  " .. C.dim .. "every quest here and the ones that unlock them, in order|r",
+        action = function() PF:OpenDungeonRoute(dg.name) end,
+        tip = { "Quest route", "Starts a Pathfinder route through every quest above: the quests that unlock them first, then the pick-ups, the run and the hand-ins." } }
+    local function qname(id)
+        local i = PF.QuestInfo and PF:QuestInfo(id)
+        return i and i.name or ("quest " .. id)
+    end
+    for _, q in ipairs(list) do
+        local st = STATE_TEXT[q.state] or STATE_TEXT.available
+        local label = st[1]:find("%%d") and st[1]:format(q.req or 0) or st[1]
+        local color = (q.state == "done" and C.good) or ((q.state == "ready" or q.state == "available") and C.white) or C.dim
+        local head = "    " .. st[2] .. " " .. color .. q.name .. "|r  " .. C.dim .. "[" .. (q.level or "?") .. "]"
+            .. (q.req and (" · needs level " .. q.req) or "") .. " · " .. label .. "|r"
+        local where = {}
+        if q.item then where[#where + 1] = "Starts from " .. q.item .. (q.inside and " (inside)" or "")
+        elseif q.starts and q.starts[1] then where[#where + 1] = "Starts: " .. q.starts[1] .. (q.inside and " (inside)" or "") end
+        if q.ends and q.ends[1] then where[#where + 1] = "Hand in: " .. q.ends[1] .. (q.endsInside and " (inside)" or "") end
+        local tip = { q.name, q.objective or "" }
+        lines[#lines + 1] = { head, quest = q.id, tip = tip }
+        if #where > 0 then lines[#lines + 1] = { "        " .. C.dim .. table.concat(where, "  ·  ") .. "|r", quest = q.id, tip = tip } end
+        if #q.pre > 0 then
+            local chain = {}
+            for _, p in ipairs(q.pre) do
+                local ok = PF.QuestDone and PF:QuestDone(p)
+                chain[#chain + 1] = (ok and C.good or C.white) .. qname(p) .. (ok and " (done)" or "") .. "|r"
+            end
+            lines[#lines + 1] = { "        " .. C.dim .. "First: |r" .. table.concat(chain, C.dim .. " > |r"), quest = q.pre[1], tip = { "Quests before " .. q.name, "Do these in order to unlock it. Click to mark the first on your map." } }
+        end
+        local rewards = questRewards(q.id)
+        if rewards then
+            for _, rw in ipairs(rewards) do
+                local id = rw.id
+                lines[#lines + 1] = { "        " .. C.dim .. "Reward:|r " .. itemText(id, rw.name), link = linkFor(id) }
+            end
+        end
+    end
+end
+
 local function journalLines(dg, isRaid)
+
     local loot = ns.Loot and ns.Loot.For(dg)
     local seen = db.drops[dg.name]
     -- drops RUIN looted, by name, so a listed name without an ID can show the real item
@@ -773,7 +876,7 @@ local function journalLines(dg, isRaid)
         lines[#lines + 1] = { C.gold .. title .. "|r" }
         for _, t in ipairs(list) do lines[#lines + 1] = { "    " .. C.dim .. "-|r " .. t } end
     end
-    section("Quests", dg.quests)
+    questLines(lines, dg)
     if dg.questXP then section("Quest XP", { dg.questXP }) end
     if dg.attunement then
         local a = dg.attunement
@@ -927,7 +1030,13 @@ local function detailList(parent)
                 row:EnableMouse(true)
                 row:SetScript("OnEnter", function(self)
                     if not GameTooltip then return end
-                    if self.link then
+                    if self.tipLines then
+                        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                        GameTooltip:AddLine(self.tipLines[1], 1, 1, 1)
+                        if self.tipLines[2] and self.tipLines[2] ~= "" then GameTooltip:AddLine(self.tipLines[2], 0.8, 0.85, 0.95, true) end
+                        if self.quest then GameTooltip:AddLine(C.dim .. "Click to mark it on your map.|r") end
+                        GameTooltip:Show()
+                    elseif self.link then
                         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                         pcall(GameTooltip.SetHyperlink, GameTooltip, self.link)
                         GameTooltip:AddLine(C.dim .. "Click for the full tooltip. Shift-click to link it in chat.|r")
@@ -940,9 +1049,13 @@ local function detailList(parent)
                         GameTooltip:Show()
                     end
                 end)
-                row:SetScript("OnLeave", function(self) if (self.link or self.itemName) and GameTooltip then GameTooltip:Hide() end end)
+                row:SetScript("OnLeave", function(self) if (self.link or self.itemName or self.tipLines) and GameTooltip then GameTooltip:Hide() end end)
                 row:SetScript("OnMouseUp", function(self, button)
-                    if self.link then M.ShowItem(self.link, button) end
+                    if self.action then self.action()
+                    elseif self.quest then
+                        local PF = R:GetModule("Pathfinder")
+                        if PF and PF.ShowQuestOnMap then PF:ShowQuestOnMap(self.quest) end
+                    elseif self.link then M.ShowItem(self.link, button) end
                 end)
                 self.rows[i] = row
             end
@@ -953,6 +1066,7 @@ local function detailList(parent)
             row.text:SetText(line[1])
             row.link = line.link
             row.itemName, row.itemInfo = not line.link and line.name or nil, line.info
+            row.quest, row.action, row.tipLines = line.quest, line.action, line.tip
             local blank = line[1] == " "
             local h = blank and 6 or math.max(14, row.text:GetStringHeight() or 14)
             row:SetHeight(h)
@@ -1043,6 +1157,14 @@ local function buildJournal(page)
         if entry and M:PlanRun(entry, at, ui.raidSize, ui.jmode == "Raids") then refreshPage() end
     end)
     ui.runPost:SetPoint("TOPRIGHT", card, "TOPRIGHT", -8, -56)
+    ui.questRoute = W.Button(card, "Quest route", 104, function()
+        local list, sel = journalEntries()
+        local entry = list[sel] or list[1]
+        local PF = R:GetModule("Pathfinder")
+        if entry and PF and PF.OpenDungeonRoute then PF:OpenDungeonRoute(entry.name) end
+    end)
+    ui.questRoute:SetPoint("RIGHT", ui.runPost, "LEFT", -6, 0)
+    ui.questRoute.tip = "Open a RUIN Pathfinder route through every quest of this dungeon for your character, with the quests that unlock them."
     ui.runs = W.Label(card, "", "GameFontHighlightSmall")
     ui.runs:SetPoint("TOPLEFT", 10, -88)
     ui.runs:SetPoint("RIGHT", card, "RIGHT", -8, 0)
@@ -1069,6 +1191,8 @@ local function refreshJournal()
     ui.specCycle.Refresh()
     local mu = R:GetModule("Muster")
     ui.runPost:SetEnabled(mu ~= nil)
+    local PF = R:GetModule("Pathfinder")
+    ui.questRoute:SetEnabled(PF ~= nil and PF.OpenDungeonRoute ~= nil and entry ~= nil and PF:DungeonEntry(entry.name) ~= nil)
     local runs = {}
     if mu and mu.GetUpcoming and entry then
         for _, ev in ipairs(mu:GetUpcoming()) do
