@@ -1269,18 +1269,18 @@ local function detailList(parent)
                 row:SetScript("OnEnter", function(self)
                     if not GameTooltip then return end
                     if self.tipLines then
-                        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                        GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
                         GameTooltip:AddLine(self.tipLines[1], 1, 1, 1)
                         if self.tipLines[2] and self.tipLines[2] ~= "" then GameTooltip:AddLine(self.tipLines[2], 0.8, 0.85, 0.95, true) end
                         if self.quest then GameTooltip:AddLine(C.dim .. "Click to mark it on your map.|r") end
                         GameTooltip:Show()
                     elseif self.link then
-                        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                        GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
                         pcall(GameTooltip.SetHyperlink, GameTooltip, self.link)
                         GameTooltip:AddLine(C.dim .. "Click for the full tooltip. Shift-click to link it in chat.|r")
                         GameTooltip:Show()
                     elseif self.itemName then
-                        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                        GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
                         GameTooltip:AddLine(self.itemName, 1, 1, 1)
                         if self.itemInfo then GameTooltip:AddLine(self.itemInfo, 0.7, 0.7, 0.7) end
                         GameTooltip:AddLine("The game hasn't sent this item yet. Its full tooltip shows here once a RUIN member loots it or you see it in game.", 0.6, 0.6, 0.6, true)
