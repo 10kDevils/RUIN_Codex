@@ -89,9 +89,81 @@ end
 
 -- The loot entry for a Journal entry ({ id, name, bosses = { { name, tip } } }):
 -- { source, verified, trash = { items }, bosses = { { name, tip, items = { { id, chance } } } } }, or nil.
+-- Loot.questie(entry), set by Codex.lua, gives the dungeon's drops read from
+-- Questie or QuestieDB: { sections = { { name, rare, items = { ... } } }, trash = { ... } }
+-- or nil. When it has a list, that list leads: listed drops it lacks (by ID or
+-- name) are added, and a listed drop it has lends its drop chance and slot.
+local function merged(entry, d, q)
+    local out = { source = "questie", verified = false, trash = {}, bosses = {} }
+    local listed = {}               -- listed items by ID and by name
+    local function remember(it)
+        if it.id then listed["id:" .. it.id] = it end
+        if it.name then listed["n:" .. key(it.name)] = it end
+    end
+    for _, b in ipairs(d and d.bosses or {}) do for _, it in ipairs(b.items) do remember(it) end end
+    for _, it in ipairs(d and d.trash or {}) do remember(it) end
+    local shown = {}
+    local function take(it)
+        local l = (it.id and listed["id:" .. it.id]) or (it.name and listed["n:" .. key(it.name)])
+        local copy = { id = it.id, name = it.name, info = it.info or (l and l.info), chance = l and l.chance, quest = it.quest }
+        if it.id then shown["id:" .. it.id] = true end
+        if it.name then shown["n:" .. key(it.name)] = true end
+        if l and l.id then shown["id:" .. l.id] = true end
+        if l and l.name then shown["n:" .. key(l.name)] = true end
+        return copy
+    end
+    local function isShown(it) return (it.id and shown["id:" .. it.id]) or (it.name and shown["n:" .. key(it.name)]) end
+    local secByKey, usedSec = {}, {}
+    for i, sec in ipairs(q.sections or {}) do secByKey[key(sec.name)] = i end
+    local listedByKey = {}
+    for _, lb in ipairs(d and d.bosses or {}) do listedByKey[key(lb.name)] = lb end
+    local function bossItems(name)
+        local items = {}
+        local i = secByKey[key(name)]
+        if i then usedSec[i] = true; for _, it in ipairs(q.sections[i].items) do items[#items + 1] = take(it) end end
+        return items
+    end
+    -- the journal's bosses, in order, then rares and other named drops Questie knows
+    for _, jb in ipairs(entry.bosses or {}) do
+        out.bosses[#out.bosses + 1] = { name = jb[1], tip = jb[2], items = bossItems(jb[1]) }
+    end
+    for i, sec in ipairs(q.sections or {}) do
+        if not usedSec[i] then
+            local items = {}
+            for _, it in ipairs(sec.items) do items[#items + 1] = take(it) end
+            out.bosses[#out.bosses + 1] = { name = sec.name, tip = sec.rare and "Rare: not every run." or nil, items = items }
+        end
+    end
+    -- listed drops Questie doesn't have: under their boss, or a section of their own
+    local byName = {}
+    for _, b in ipairs(out.bosses) do byName[key(b.name)] = b end
+    for _, lb in ipairs(d and d.bosses or {}) do
+        local target = byName[key(lb.name)]
+        for _, it in ipairs(lb.items) do
+            if not isShown(it) then
+                if not target then
+                    target = { name = lb.name, items = {} }
+                    out.bosses[#out.bosses + 1] = target
+                    byName[key(lb.name)] = target
+                end
+                target.items[#target.items + 1] = take(it)
+            end
+        end
+    end
+    for _, it in ipairs(q.trash or {}) do if not isShown(it) then out.trash[#out.trash + 1] = take(it) end end
+    for _, it in ipairs(d and d.trash or {}) do if not isShown(it) then out.trash[#out.trash + 1] = take(it) end end
+    return out
+end
+
 function Loot.For(entry)
     if type(entry) ~= "table" then return nil end
     local d = Loot.data[key(entry.id)] or Loot.data[key(entry.name)]
+    local q = Loot.questie and Loot.questie(entry)
+    if q then
+        -- the Classic sample is replaced; the WoW Forever launch lists are merged in
+        if d and d.source and tostring(d.source):find("Classic", 1, true) then d = nil end
+        return merged(entry, d, q)
+    end
     if not d then return nil end
     local out = { source = d.source, verified = d.verified, trash = d.trash, bosses = {} }
     local used = {}

@@ -748,6 +748,221 @@ local STATUS_TEXT = { complete = "fully documented", strong = "well documented",
                       story_only = "story only, no boss list yet", minimal = "little published yet" }
 
 ---------------------------------------------------------------------------
+-- Every dungeon's loot, read from Questie or QuestieDB while you play
+-- (nothing of Questie's is copied into RUIN): which NPCs stand in each
+-- dungeon (their spawns), then which items those NPCs drop. Built once in
+-- the background over a few seconds, saved, and built again only when the
+-- database changes. Bosses and rares get their own lists; the rest is
+-- "Trash", leaving out world drops (items most of whose droppers are
+-- outside the dungeon) and anything that isn't gear, a recipe or a quest item.
+---------------------------------------------------------------------------
+local QL = { state = "idle" }
+M.QuestieLoot = QL
+local KEEP_CLASS = { [2] = true, [4] = true, [9] = true, [12] = true }   -- weapon, armor, recipe, quest
+local BOSS_WORLD_DROP = 40       -- a boss drop with more droppers than this anywhere is a world drop
+
+-- The database: LibQuestieDB (standalone QuestieDB, contract 4), else Questie's own.
+local function questieSource()
+    local lib = rawget(_G, "LibQuestieDB")
+    if type(lib) == "table" and type(lib.RequireContract) == "function" then
+        local ok, compatible = pcall(lib.RequireContract, 4)
+        local N, I = lib.Npc, lib.Item
+        if ok and compatible and type(N) == "table" and type(I) == "table" and type(N.GetAllIds) == "function"
+            and type(I.GetAllIds) == "function" and type(N.Get) == "function" and type(I.Get) == "function" then
+            return { name = "QuestieDB",
+                     npcs = function() return N.GetAllIds() end, items = function() return I.GetAllIds() end,
+                     npc = function(id, f) return N.Get(id, f) end, item = function(id, f) return I.Get(id, f) end }
+        end
+    end
+    local loader = rawget(_G, "QuestieLoader")
+    if type(loader) == "table" and type(loader.ImportModule) == "function" then
+        local ok, Q = pcall(loader.ImportModule, loader, "QuestieDB")
+        if ok and type(Q) == "table" and type(Q.QueryNPCSingle) == "function" and type(Q.QueryItemSingle) == "function"
+            and type(Q.NPCPointers) == "table" and type(Q.ItemPointers) == "table" then
+            local function list(t) local out = {}; for id in pairs(t) do out[#out + 1] = id end; table.sort(out); return out end
+            return { name = "Questie",
+                     npcs = function() return list(Q.NPCPointers) end, items = function() return list(Q.ItemPointers) end,
+                     npc = function(id, f) return Q.QueryNPCSingle(id, f) end, item = function(id, f) return Q.QueryItemSingle(id, f) end }
+        end
+    end
+    return nil
+end
+QL.Source = function() local s = questieSource(); return s and s.name end
+
+local function allEntries()
+    local out = {}
+    for _, list in ipairs({ ns.Dungeons or {}, ns.Raids or {} }) do
+        for _, dg in ipairs(list) do out[#out + 1] = dg end
+    end
+    return out
+end
+
+local function stampOf(src, nNpc, nItem)
+    local ver = ""
+    local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or rawget(_G, "GetAddOnMetadata")
+    if getMeta then
+        local ok, v = pcall(getMeta, src.name == "QuestieDB" and "QuestieDB" or "Questie", "Version")
+        ver = ok and tostring(v or "") or ""
+    end
+    local areas = {}
+    for _, dg in ipairs(allEntries()) do for _, a in ipairs(dg.areas or {}) do areas[#areas + 1] = a end end
+    return ("%s:%s:%d:%d:%d:2"):format(src.name, ver, nNpc, nItem, #areas)
+end
+
+local function safe(f, id, field)
+    local ok, v = pcall(f, id, field)
+    if ok then return v end
+end
+
+-- Build the lists in a coroutine, a few hundred records per frame.
+local function build(src)
+    local areaOf = {}
+    for _, dg in ipairs(allEntries()) do for _, a in ipairs(dg.areas or {}) do areaOf[a] = dg.name end end
+    local npcs, items = src.npcs(), src.items()
+    local stamp = stampOf(src, #npcs, #items)
+    if db.qloot and db.qloot.stamp == stamp then return db.qloot end
+    local inside, npcInfo = {}, {}       -- npc -> dungeon name; npc -> { name, rank, level }
+    for i, id in ipairs(npcs) do
+        local spawns = safe(src.npc, id, "spawns")
+        if type(spawns) == "table" then
+            for area in pairs(spawns) do
+                local d = areaOf[area]
+                if d then inside[id] = d; break end
+            end
+        end
+        if inside[id] then
+            npcInfo[id] = { safe(src.npc, id, "name"), tonumber(safe(src.npc, id, "rank")) or 0, tonumber(safe(src.npc, id, "minLevel")) or 0 }
+        end
+        if i % 400 == 0 then coroutine.yield() end
+    end
+    local out = { stamp = stamp, d = {} }
+    for i, id in ipairs(items) do
+        local drops = safe(src.item, id, "npcDrops")
+        if type(drops) == "table" and #drops > 0 then
+            local byDungeon
+            for _, n in ipairs(drops) do
+                local d = inside[n]
+                if d then
+                    byDungeon = byDungeon or {}
+                    local l = byDungeon[d] or {}
+                    l[#l + 1] = n
+                    byDungeon[d] = l
+                end
+            end
+            if byDungeon then
+                local class = tonumber(safe(src.item, id, "class"))
+                if KEEP_CLASS[class] then
+                    local name = safe(src.item, id, "name")
+                    local ilvl = tonumber(safe(src.item, id, "itemLevel")) or 0
+                    for d, list in pairs(byDungeon) do
+                        local e = out.d[d] or { npcs = {}, items = {} }
+                        out.d[d] = e
+                        for _, n in ipairs(list) do e.npcs[n] = npcInfo[n] end
+                        e.items[#e.items + 1] = { id, type(name) == "string" and name or nil, class, ilvl, #drops, list }
+                    end
+                end
+            end
+        end
+        if i % 400 == 0 then coroutine.yield() end
+    end
+    return out
+end
+
+-- Start reading (once); refreshes the Journal when done.
+function QL.Start()
+    if QL.state ~= "idle" then return end
+    local src = questieSource()
+    if not src then return end
+    QL.state = "building"
+    local co = coroutine.create(build)
+    local function step()
+        local ok, res = coroutine.resume(co, src)
+        if not ok then
+            QL.state, QL.err = "failed", tostring(res)
+            return
+        end
+        if coroutine.status(co) == "dead" then
+            db.qloot = res
+            QL.state = "ready"
+            refreshPage()
+            return
+        end
+        C_Timer.After(0, step)
+    end
+    step()
+end
+
+local function lootKey(s) return (tostring(s or ""):lower():gsub("[^%w]", "")) end
+
+-- One dungeon's drops, in Loot.For's shape (see Loot.lua), or nil.
+function QL.For(entry)
+    if QL.state ~= "ready" or type(db.qloot) ~= "table" or type(entry) ~= "table" then return nil end
+    local e = db.qloot.d and db.qloot.d[entry.name]
+    if not e then return nil end
+    local bossKeys = {}
+    for _, b in ipairs(entry.bosses or {}) do bossKeys[lootKey(b[1])] = b[1] end
+    -- an elite with gear only it drops (two pieces or more) is a boss the journal doesn't list yet
+    local ownGear = {}
+    if not entry.size then
+        for _, rec in ipairs(e.items) do
+            if (rec[3] == 2 or rec[3] == 4) and rec[5] == 1 and rec[6][1] then ownGear[rec[6][1]] = (ownGear[rec[6][1]] or 0) + 1 end
+        end
+    end
+    local function bossOf(npc)
+        local info = e.npcs[npc]
+        local name = info and info[1]
+        if not name then return nil end
+        local k = lootKey(name)
+        if bossKeys[k] then return bossKeys[k], false end
+        for bk, bn in pairs(bossKeys) do
+            if #k >= 5 and #bk >= 5 and (bk:find(k, 1, true) or k:find(bk, 1, true)) then return bn, false end
+        end
+        local rank = info[2]
+        if rank == 2 or rank == 4 then return name, true end      -- rare elite, rare
+        if rank == 3 or (rank >= 1 and (ownGear[npc] or 0) >= 2) then return name, false end
+        return nil
+    end
+    local sections, secIndex, trash = {}, {}, {}
+    local function add(list, it) list[#list + 1] = it end
+    for _, rec in ipairs(e.items) do
+        local id, name, class, ilvl, total, droppers = rec[1], rec[2], rec[3], rec[4], rec[5], rec[6]
+        local it = { id = id, name = name, quest = class == 12 or nil, ilvl = ilvl, class = class }
+        local onBoss = false
+        if total <= BOSS_WORLD_DROP then
+            for _, n in ipairs(droppers) do
+                local boss, rare = bossOf(n)
+                if boss then
+                    local i = secIndex[boss]
+                    if not i then
+                        sections[#sections + 1] = { name = boss, rare = rare, items = {}, level = (e.npcs[n] and e.npcs[n][3]) or 0 }
+                        i = #sections
+                        secIndex[boss] = i
+                    end
+                    local dup = false
+                    for _, x in ipairs(sections[i].items) do if x.id == id then dup = true end end
+                    if not dup then add(sections[i].items, it) end
+                    onBoss = true
+                end
+            end
+        end
+        -- trash: mostly dropped inside this dungeon
+        if not onBoss and #droppers * 2 >= total then add(trash, it) end
+    end
+    local function order(a, b)
+        local ca = a.quest and 3 or (a.class == 9 and 2) or 1
+        local cb = b.quest and 3 or (b.class == 9 and 2) or 1
+        if ca ~= cb then return ca < cb end
+        if (a.ilvl or 0) ~= (b.ilvl or 0) then return (a.ilvl or 0) > (b.ilvl or 0) end
+        return (a.name or "") < (b.name or "")
+    end
+    for _, s in ipairs(sections) do table.sort(s.items, order) end
+    table.sort(trash, order)
+    table.sort(sections, function(a, b) if a.level ~= b.level then return a.level < b.level end return a.name < b.name end)
+    return { sections = sections, trash = trash }
+end
+ns.Loot.questie = QL.For
+
+---------------------------------------------------------------------------
 -- Dungeon quests: every quest the dungeon has for your race and class, with
 -- where it starts, the quests that unlock it, its rewards and whether you've
 -- done it. RUIN Pathfinder reads them from Questie (or QuestieDB); without
@@ -849,9 +1064,20 @@ local function questLines(lines, dg)
     end
 end
 
-local function journalLines(dg, isRaid)
+-- An item's slot, from the game once it knows the item ("Two-Hand", "Head").
+local function slotText(id)
+    if not id or not GetItemInfo then return nil end
+    local _, _, _, _, _, _, subType, _, equipLoc = GetItemInfo(id)
+    local slot = type(equipLoc) == "string" and equipLoc ~= "" and rawget(_G, equipLoc) or nil
+    if type(slot) ~= "string" then return nil end
+    if type(subType) == "string" and subType ~= "" and subType ~= "Miscellaneous" and subType ~= "Junk" then return slot .. ", " .. subType end
+    return slot
+end
 
+local function journalLines(dg, isRaid)
+    QL.Start()
     local loot = ns.Loot and ns.Loot.For(dg)
+    local fromQuestie = loot and loot.source == "questie"
     local seen = db.drops[dg.name]
     -- drops RUIN looted, by name, so a listed name without an ID can show the real item
     local seenByName = {}
@@ -860,7 +1086,10 @@ local function journalLines(dg, isRaid)
         if name then seenByName[name:lower()] = id end
     end
     local lines = {}
-    if dg.forever then
+    if fromQuestie then
+        lines[#lines + 1] = { W.TagText("Live", QL.Source() or "QuestieDB") .. C.dim .. "  Loot read from " .. (QL.Source() or "QuestieDB")
+            .. "'s WoW Forever database while you play" .. (dg.forever and ", with the launch data's lists" or "") .. ". \"Looted by RUIN\" is real.|r" }
+    elseif dg.forever then
         lines[#lines + 1] = { W.TagText("Unverified", "WoW Forever launch data") .. C.dim .. "  From the WoW Forever launch databases ("
             .. dg.forever .. ")" .. (dg.status and STATUS_TEXT[dg.status] and (", " .. STATUS_TEXT[dg.status]) or "")
             .. ". Not yet checked by RUIN. \"Looted by RUIN\" is real.|r" }
@@ -895,6 +1124,11 @@ local function journalLines(dg, isRaid)
 
     lines[#lines + 1] = { " " }
     lines[#lines + 1] = { C.gold .. "Bosses and loot|r" }
+    if QL.state == "building" and not fromQuestie then
+        lines[#lines + 1] = { "    " .. C.dim .. "Reading every dungeon's loot from " .. (QL.Source() or "QuestieDB") .. " (a few seconds, once)...|r" }
+    elseif not fromQuestie and not QL.Source() and dg.areas then
+        lines[#lines + 1] = { "    " .. C.dim .. "Install QuestieDB (or Questie) for this dungeon's full loot list.|r" }
+    end
     local bosses = loot and loot.bosses or {}
     if #bosses == 0 then
         for _, b in ipairs(dg.bosses) do bosses[#bosses + 1] = { name = b[1], tip = b[2], items = {} } end
@@ -909,7 +1143,8 @@ local function journalLines(dg, isRaid)
     local function itemLine(it, k)
         local id = it.id or (it.name and (seenByName[it.name:lower()] or idByName(it.name)))
         local text = id and itemText(id, it.name) or (C.white .. it.name .. "|r")
-        local info = it.info and ("  " .. C.dim .. "(" .. it.info .. ")|r") or ""
+        local slot = it.info or (id and slotText(id)) or (it.quest and "quest item") or nil
+        local info = slot and ("  " .. C.dim .. "(" .. slot .. ")|r") or ""
         local track = (k and k > 0) and trackText(seen, id, k) or (chanceText(it) .. (id and seenText(seen, id) or ""))
         return { "    " .. C.dim .. "-|r " .. text .. info .. track, link = linkFor(id), name = it.name, info = it.info }
     end
@@ -918,11 +1153,14 @@ local function journalLines(dg, isRaid)
         lines[#lines + 1] = { C.white .. b.name .. "|r" .. (k > 0 and ("  " .. C.good .. "killed " .. k .. "x by RUIN|r") or "")
             .. (b.tip and ("  " .. C.dim .. b.tip .. "|r") or "") }
         for _, it in ipairs(b.items) do lines[#lines + 1] = itemLine(it, k) end
-        if loot and #b.items == 0 then lines[#lines + 1] = { "    " .. C.dim .. "- no list for this boss yet|r" } end
+        if loot and #b.items == 0 then
+            lines[#lines + 1] = { "    " .. C.dim .. (fromQuestie and "- nothing listed for it in " .. (QL.Source() or "QuestieDB") .. " (for a group of bosses, see each one below)|r"
+                or "- no list for this boss yet|r") }
+        end
     end
     if loot and loot.trash and #loot.trash > 0 then
         lines[#lines + 1] = { " " }
-        lines[#lines + 1] = { C.gold .. "Other drops inside|r" }
+        lines[#lines + 1] = { C.gold .. (fromQuestie and "Trash|r  " .. C.dim .. "drops from the dungeon's other mobs|r" or "Other drops inside|r") }
         for _, it in ipairs(loot.trash) do lines[#lines + 1] = itemLine(it) end
     end
     local listed, listedNames = {}, {}
@@ -1278,6 +1516,13 @@ function M:OnEnable()
     self:Listen("DROP", "OnDrop")
     self:Listen("DROPQ", "OnDropAsk")
     self:Listen("DROPS", "OnDrops")
+    local redrawQueued = false
+    pcall(self.RegisterEvent, self, "GET_ITEM_INFO_RECEIVED", function()
+        if redrawQueued or not (ui.panel and ui.panel:IsVisible()) then return end
+        redrawQueued = true
+        C_Timer.After(0.5, function() redrawQueued = false; refreshPage() end)
+    end)
+    C_Timer.After(15, function() QL.Start() end)      -- have the loot lists ready before the Journal opens
     self:Listen("KILL", "OnKill")
     self:Listen("MOBS", "OnMobs")
     self:Listen("TALLY", "OnTally")

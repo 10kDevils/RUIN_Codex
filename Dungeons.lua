@@ -11,7 +11,7 @@ local ADDON, ns = ...
 
 ns.Dungeons = {
     {
-        id = "rfc", name = "Ragefire Chasm", levels = "13-18", where = "Cleft of Shadow, Orgrimmar",
+        id = "rfc", name = "Ragefire Chasm", areas = { 2437 }, levels = "13-18", where = "Cleft of Shadow, Orgrimmar",
         bosses = {
             { "Oggleflint", "Cleaves; turn him away from the group." },
             { "Taragaman the Hungerer", "Fire Nova and an uppercut knockback. Healers stay out of melee range." },
@@ -20,34 +20,40 @@ ns.Dungeons = {
         },
     },
     {
-        id = "wc", name = "Wailing Caverns", levels = "17-24", where = "Northern Barrens",
+        id = "wc", name = "Wailing Caverns", areas = { 718 }, levels = "17-24", where = "Northern Barrens",
         bosses = {
             { "Lady Anacondra", "Casts Sleep and heals herself. Interrupt the heal." },
             { "Lord Cobrahn", "Turns into a serpent and poisons." },
             { "Lord Pythas", "Lightning bolts and Sleep; interrupt." },
             { "Lord Serpentis", "Heals himself; interrupt or burst him down." },
+            { "Kresh", "A giant turtle in the water; slow but tough." },
+            { "Skum", "Deep in the caves with the thunder lizards." },
+            { "Verdan the Everliving", "Spawns during the Naralex event; knocks the group down." },
             { "Mutanus the Devourer", "Appears after you escort the Disciple of Naralex, which needs all four Fanglords dead." },
         },
     },
     {
-        id = "dm", name = "The Deadmines", levels = "17-26", where = "Moonbrook, Westfall",
+        id = "dm", name = "The Deadmines", areas = { 1581, 10029 }, levels = "17-26", where = "Moonbrook, Westfall",
         bosses = {
             { "Rhahk'Zor", "Hits hard; first boss inside." },
             { "Sneed's Shredder", "Sneed jumps out when the shredder dies. Kill him too." },
             { "Gilnid", "In the foundry with smelter adds." },
             { "Mr. Smite", "Stuns the group and switches weapons as his health drops." },
             { "Captain Greenskin", "On the ship deck with pirates." },
+            { "Cookie", "The ship's cook, on deck before VanCleef." },
             { "Edwin VanCleef", "Calls Blackguards to help when wounded. Save cooldowns for the adds." },
         },
     },
     {
-        id = "sfk", name = "Shadowfang Keep", levels = "22-30", where = "Silverpine Forest",
+        id = "sfk", name = "Shadowfang Keep", areas = { 209, 10014, 10015, 10016, 10017, 10018, 10019 }, levels = "22-30", where = "Silverpine Forest",
         bosses = {
             { "Rethilgore", "Prisoners in the courtyard open the way." },
             { "Razorclaw the Butcher", "Plain melee boss." },
             { "Baron Silverlaine", "Veil of Shadow lowers healing on the tank." },
             { "Commander Springvale", "Heals himself and stuns. Interrupt the heal." },
             { "Odo the Blindwatcher", "Gets stronger as his pack falls; kill quickly." },
+            { "Fenrus the Devourer", "Worg boss; Voidwalkers appear when he dies." },
+            { "Wolf Master Nandos", "Comes with his worgs; kill the worgs first." },
             { "Archmage Arugal", "Teleports around the room and turns players into worgen." },
         },
     },
@@ -55,7 +61,7 @@ ns.Dungeons = {
     -- Classic). Loot lists come when the data does; RUIN's own drop and kill
     -- tracking works for them now, and their quests come from RUIN Pathfinder.
     {
-        id = "stocks", name = "The Stockade", levels = "24-32", where = "Stormwind City, between the Mage Quarter and Old Town",
+        id = "stocks", name = "The Stockade", areas = { 717 }, levels = "24-32", where = "Stormwind City, between the Mage Quarter and Old Town",
         bosses = {
             { "Targorr the Dread", "Enrages at low health; burn him down." },
             { "Kam Deepfury", "Defensive stance and shield bash." },
@@ -66,7 +72,7 @@ ns.Dungeons = {
         },
     },
     {
-        id = "bfd", name = "Blackfathom Deeps", levels = "24-32", where = "Zoram Strand, Ashenvale",
+        id = "bfd", name = "Blackfathom Deeps", areas = { 719, 10020, 10021 }, levels = "24-32", where = "Zoram Strand, Ashenvale",
         bosses = {
             { "Ghamoo-ra", "A giant turtle with a thick shell; slow fight." },
             { "Lady Sarevess", "Slows and shoots; tank her away from the casters." },
@@ -79,7 +85,7 @@ ns.Dungeons = {
         },
     },
     {
-        id = "gnomer", name = "Gnomeregan", levels = "29-38", where = "Dun Morogh, west of Ironforge",
+        id = "gnomer", name = "Gnomeregan", areas = { 721, 133, 10030, 10031, 10032 }, levels = "29-38", where = "Dun Morogh, west of Ironforge",
         bosses = {
             { "Grubbis", "Appears with Chomper during Emi Shortfuse's escort." },
             { "Viscous Fallout", "Poison; resistances help." },
@@ -90,7 +96,7 @@ ns.Dungeons = {
         },
     },
     {
-        id = "rfk", name = "Razorfen Kraul", levels = "29-38", where = "Southern Barrens",
+        id = "rfk", name = "Razorfen Kraul", areas = { 491, 1717 }, levels = "29-38", where = "Southern Barrens",
         bosses = {
             { "Roogug", "Calls earth elementals." },
             { "Aggem Thorncurse", "Heals and summons a boar." },
@@ -101,7 +107,7 @@ ns.Dungeons = {
         },
     },
     {
-        id = "sm", name = "Scarlet Monastery", levels = "30-46", where = "Tirisfal Glades, north of Brill",
+        id = "sm", name = "Scarlet Monastery", areas = { 796, 6109, 6386, 10008, 10009, 10010 }, levels = "30-46", where = "Tirisfal Glades, north of Brill",
         bosses = {
             { "Interrogator Vishas", "Graveyard. Shadow Word: Pain." },
             { "Bloodmage Thalnos", "Graveyard. Fire and shadow spells." },
@@ -113,7 +119,7 @@ ns.Dungeons = {
         },
     },
     {
-        id = "rfd", name = "Razorfen Downs", levels = "37-46", where = "Southern Barrens, near Thousand Needles",
+        id = "rfd", name = "Razorfen Downs", areas = { 722 }, levels = "37-46", where = "Southern Barrens, near Thousand Needles",
         bosses = {
             { "Tuten'kash", "Spider boss called by the gong." },
             { "Mordresh Fire Eye", "Fire Nova; keep casters spread." },
@@ -122,7 +128,7 @@ ns.Dungeons = {
         },
     },
     {
-        id = "ulda", name = "Uldaman", levels = "41-51", where = "Badlands",
+        id = "ulda", name = "Uldaman", areas = { 1337, 1517, 10033 }, levels = "41-51", where = "Badlands",
         bosses = {
             { "Revelosh", "Lightning; trogg adds." },
             { "Baelog", "The Lost Dwarves: Baelog, Eric and Olaf together." },
@@ -135,7 +141,7 @@ ns.Dungeons = {
         },
     },
     {
-        id = "zf", name = "Zul'Farrak", levels = "44-54", where = "Tanaris",
+        id = "zf", name = "Zul'Farrak", areas = { 1176, 978 }, levels = "44-54", where = "Tanaris",
         bosses = {
             { "Antu'sul", "Basilisk adds and healing ward; kill the ward." },
             { "Theka the Martyr", "Becomes immune to physical or magic; switch damage type." },
@@ -148,7 +154,7 @@ ns.Dungeons = {
         },
     },
     {
-        id = "mara", name = "Maraudon", levels = "46-55", where = "Desolace",
+        id = "mara", name = "Maraudon", areas = { 2100, 10000 }, levels = "46-55", where = "Desolace",
         bosses = {
             { "Noxxion", "Poison; splits into adds." },
             { "Razorlash", "Knockback and puncture." },
@@ -161,7 +167,7 @@ ns.Dungeons = {
         },
     },
     {
-        id = "st", name = "Sunken Temple", levels = "50-60", where = "Swamp of Sorrows",
+        id = "st", name = "Sunken Temple", areas = { 1477, 1417 }, levels = "50-60", where = "Swamp of Sorrows",
         bosses = {
             { "Atal'alarion", "Summoned by the statues in order on the bottom floor." },
             { "Jammal'an the Prophet", "Mind controls and heals; with Ogom the Wretched." },
@@ -172,7 +178,7 @@ ns.Dungeons = {
         },
     },
     {
-        id = "brd", name = "Blackrock Depths", levels = "52-60", where = "Blackrock Mountain, between Searing Gorge and Burning Steppes",
+        id = "brd", name = "Blackrock Depths", areas = { 1584, 1585 }, levels = "52-60", where = "Blackrock Mountain, between Searing Gorge and Burning Steppes",
         bosses = {
             { "High Interrogator Gerstahn", "Mind flay and fear." },
             { "Lord Roccor", "Earth shock and ground tremor." },
@@ -194,7 +200,7 @@ ns.Dungeons = {
         },
     },
     {
-        id = "dire", name = "Dire Maul", levels = "54-60", where = "Feralas",
+        id = "dire", name = "Dire Maul", areas = { 2557, 10022, 10023, 10024, 10025, 10026, 10027 }, levels = "54-60", where = "Feralas",
         bosses = {
             { "Pusillin", "East. Chase him for the Crescent Key." },
             { "Zevrim Thornhoof", "East. Sacrifice; heals." },
@@ -210,7 +216,7 @@ ns.Dungeons = {
         },
     },
     {
-        id = "brs", name = "Blackrock Spire", levels = "55-60", where = "Blackrock Mountain",
+        id = "brs", name = "Blackrock Spire", areas = { 1583, 10003, 10004, 10005, 10006, 10007 }, levels = "55-60", where = "Blackrock Mountain",
         bosses = {
             { "Highlord Omokk", "Lower Spire. Ogre with knockback." },
             { "Shadow Hunter Vosh'gajin", "Lower Spire. Hex and curse." },
@@ -227,7 +233,7 @@ ns.Dungeons = {
         },
     },
     {
-        id = "scholo", name = "Scholomance", levels = "58-60", where = "Caer Darrow, Western Plaguelands",
+        id = "scholo", name = "Scholomance", areas = { 2057, 10011, 10012, 10013, 6066, 10077, 10078, 10079 }, levels = "58-60", where = "Caer Darrow, Western Plaguelands",
         bosses = {
             { "Kirtonos the Herald", "Summoned with the Blood of Innocents at the balcony." },
             { "Jandice Barov", "Makes copies of herself; find the real one." },
@@ -238,7 +244,7 @@ ns.Dungeons = {
         },
     },
     {
-        id = "strat", name = "Stratholme", levels = "58-60", where = "Eastern Plaguelands",
+        id = "strat", name = "Stratholme", areas = { 2017, 10001 }, levels = "58-60", where = "Eastern Plaguelands",
         bosses = {
             { "The Unforgiven", "Live side. Frost and fear." },
             { "Timmy the Cruel", "Live side. Spawns when the square is clear." },
@@ -253,7 +259,7 @@ ns.Dungeons = {
     },
     -- WoW Forever's new dungeons: launch data, 2026-11-05 (Boss & Loot Watch and Launch Snapshot)
     {
-        id = "hot", name = "Hall of Thanes", levels = "13-18", where = "Beneath Ironforge / Dun Morogh", forever = "2026-11-05",
+        id = "hot", name = "Hall of Thanes", areas = { 16919 }, levels = "13-18", where = "Beneath Ironforge / Dun Morogh", forever = "2026-11-05",
         bosses = {
             { "Faldrim Anvilmar", "Anvilmar's Curse: about 20% attack/cast speed reduction on tank (dispel/remove curse); Mind Blast: interruptible." },
             { "Magmatus", "Combust: 360-degree AoE - move out; Bloodhound Runts: disease increasing damage taken; Dark Iron Summoners: interrupt Fireballs; Dark Iron Engineers: dynamite AoE; Sap/Polymorph strong." },
@@ -264,7 +270,7 @@ ns.Dungeons = {
         status = "complete",
     },
     {
-        id = "rol", name = "Ruins of Lordaeron", levels = "15-20", where = "Ruins above Undercity, Tirisfal Glades", forever = "2026-11-05",
+        id = "rol", name = "Ruins of Lordaeron", areas = { 16611 }, levels = "15-20", where = "Ruins above Undercity, Tirisfal Glades", forever = "2026-11-05",
         bosses = {
             { "Witherfang", "Leech Poison on tank - dispel; Kill small spiders first." },
             { "The Baron", "Dangerous Knock Away on tank; Stun prioritization." },
@@ -279,7 +285,7 @@ ns.Dungeons = {
         status = "complete",
     },
     {
-        id = "exc", name = "Excavation Site: Wetlands", levels = "24-31", where = "Wetlands, above Whelgar's Excavation", forever = "2026-11-05",
+        id = "exc", name = "Excavation Site: Wetlands", areas = { 16732 }, levels = "24-31", where = "Wetlands, above Whelgar's Excavation", forever = "2026-11-05",
         bosses = {
             { "Saltspine", "Level 28. Tendon Rip (heavy slow on tank); Dust Storm: -25% hit within 10 yd - casters stay out of melee; Clear nearby crocolisk packs first." },
             { "Shadetooth", "Hardest fight: raptor packs in grass + pre-boss wave - clear before pull; Rend / Terrifying Roar / Enrage at about 30% - save stuns; Can be slowed and stunned." },
@@ -290,7 +296,7 @@ ns.Dungeons = {
         status = "complete",
     },
     {
-        id = "dal", name = "City of Dalaran", levels = "28-33", where = "Alterac Mountains (violet dome)", forever = "2026-11-05",
+        id = "dal", name = "City of Dalaran", areas = { 16544 }, levels = "28-33", where = "Alterac Mountains (violet dome)", forever = "2026-11-05",
         bosses = {
             { "Atrexis the Grave Knight", "Unholy Frenzy +75% attack speed 20s (purge/dispel); Skeletons spawn; Disarm tank about 6s." },
             { "Lyn the Ignored", "Shadow Bolt Volley (30 yd)." },
@@ -366,7 +372,7 @@ ns.Weights = {
 -- new raids may differ, so the size here is only the planner's default.
 ns.Raids = {
     {
-        id = "zg", name = "Zul'Gurub", size = 20, where = "Stranglethorn Vale",
+        id = "zg", name = "Zul'Gurub", areas = { 1977 }, size = 20, where = "Stranglethorn Vale",
         bosses = {
             { "High Priestess Jeklik", "Bat phase: spread out and kill the bats fast." },
             { "High Priest Venoxis", "Snake phase: poison clouds, keep moving." },
@@ -377,7 +383,7 @@ ns.Raids = {
         },
     },
     {
-        id = "aq20", name = "Ruins of Ahn'Qiraj", size = 20, where = "Silithus",
+        id = "aq20", name = "Ruins of Ahn'Qiraj", areas = { 3429 }, size = 20, where = "Silithus",
         bosses = {
             { "Kurinnaxx", "Mortal Wound stacks: two tanks swap. Avoid the sand traps." },
             { "General Rajaxx", "Waves of adds before the general; hold together." },
@@ -388,13 +394,13 @@ ns.Raids = {
         },
     },
     {
-        id = "ony", name = "Onyxia's Lair", size = 40, where = "Dustwallow Marsh",
+        id = "ony", name = "Onyxia's Lair", areas = { 2159 }, size = 40, where = "Dustwallow Marsh",
         bosses = {
             { "Onyxia", "Phase 2: kill whelps, don't stand under her. Phase 3: avoid the eruption cracks; tank faces her away." },
         },
     },
     {
-        id = "mc", name = "Molten Core", size = 40, where = "Blackrock Mountain",
+        id = "mc", name = "Molten Core", areas = { 2717 }, size = 40, where = "Blackrock Mountain",
         bosses = {
             { "Lucifron", "Decurse and dispel Impending Doom." },
             { "Magmadar", "Fear ward or tremor totem; tranq shot the frenzy." },
@@ -410,7 +416,7 @@ ns.Raids = {
     },
 
     {
-        id = "bwl", name = "Blackwing Lair", size = 40, where = "Upper Blackrock Spire",
+        id = "bwl", name = "Blackwing Lair", areas = { 2677 }, size = 40, where = "Upper Blackrock Spire",
         bosses = {
             { "Razorgore the Untamed", "Control the orb and destroy the eggs." },
             { "Vaelastrasz the Corrupt", "Burning Adrenaline: walk away from the raid before you blow up." },
@@ -423,7 +429,7 @@ ns.Raids = {
         },
     },
     {
-        id = "aq40", name = "Temple of Ahn'Qiraj", size = 40, where = "Silithus",
+        id = "aq40", name = "Temple of Ahn'Qiraj", areas = { 3428, 10040, 10041 }, size = 40, where = "Silithus",
         bosses = {
             { "The Prophet Skeram", "Splits into copies and mind controls." },
             { "Bug Trio", "Vem, Kri and Princess Yauj: kill order decides the poison cloud." },
@@ -437,7 +443,7 @@ ns.Raids = {
         },
     },
     {
-        id = "naxx", name = "Naxxramas", size = 40, where = "Floating above Stratholme, Eastern Plaguelands",
+        id = "naxx", name = "Naxxramas", areas = { 3456, 10062, 10063, 10064, 10065, 10066 }, size = 40, where = "Floating above Stratholme, Eastern Plaguelands",
         bosses = {
             { "Anub'Rekhan", "Arachnid Quarter. Locust Swarm: kite him." },
             { "Grand Widow Faerlina", "Sacrifice a worshipper to stop her frenzy." },
