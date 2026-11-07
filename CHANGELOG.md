@@ -8,6 +8,8 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## 0.5.3 — 2026-11-06
 
+- With Ruinous Forever Planner loaded, the planner compares your gear: Codex's tooltip upgrade line steps aside (the planner's lines show instead; Codex's "drops in" line stays), the Journal's Weights and tooltip switch give way to a note, and Codex's verdicts for the rest of RUIN (the party dungeon signal, Exchange's bag sweep) come from the planner, so RUIN gives one answer.
+- Weapons compare as a set: a two-hander against your main hand plus off hand (it was compared with the main hand alone, so a two-hander looked far better than your sword and shield); a one-hander against the two-hander you wield (it used to count as an upgrade for the empty off hand); an off hand while you wield a two-hander says so instead of calling itself an upgrade; and the off hand slot counts for one-handers only for classes that can wield two weapons.
 - Journal hover: an item shows its tooltip only with the mouse over its name, not anywhere along the row; lines with nothing to show no longer react at all.
 - Journal scrolling: the wheel glides, a faint weave behind the text moves with it, and the top and bottom edges fade while there's more to scroll. The dungeon list glides too.
 - Journal sections stand apart and fold: Quests, About this dungeon (quest XP, attunement, set, notes), Bosses and loot, Trash, General and Also looted each have a header band; click it to fold or open the section. Quests start folded; whatever you fold stays folded for every dungeon.

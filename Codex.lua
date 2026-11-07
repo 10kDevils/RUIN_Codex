@@ -141,15 +141,111 @@ local function sameItem(a, b)
     return a and b and itemIdFromLink(a) == itemIdFromLink(b)
 end
 
+-- Ruinous Forever Planner, when it's loaded, does the gear comparing: its
+-- tooltip lines replace Codex's, and Codex's answers to other modules
+-- (Compare, IsUpgrade) come from the planner, so RUIN gives one verdict.
+local function planner()
+    local P = rawget(_G, "RuinousForeverPlanner")
+    if type(P) == "table" and type(P.CompareEquipment) == "function" and type(P.ItemDetails) == "function"
+        and type(P.WeightedStatScore) == "function" then
+        return P
+    end
+    return nil
+end
+function M.PlannerHandlesGear() return planner() ~= nil end
+
+-- Weapons are compared as a set: a two-hander against your main hand plus off
+-- hand, a one-hander against the two-hander you wield, and the off hand slot
+-- only for a class that can wield two weapons.
+local WEAPON_LOC = { INVTYPE_2HWEAPON = true, INVTYPE_WEAPON = true, INVTYPE_WEAPONMAINHAND = true,
+                     INVTYPE_WEAPONOFFHAND = true, INVTYPE_SHIELD = true, INVTYPE_HOLDABLE = true }
+local OFFHAND_LOC = { INVTYPE_WEAPONOFFHAND = true, INVTYPE_SHIELD = true, INVTYPE_HOLDABLE = true }
+local function canDualWield()
+    local f = rawget(_G, "CanDualWield")
+    if f then
+        local ok, v = pcall(f)
+        if ok and v ~= nil then return v and true or false end
+    end
+    local c = myClass()
+    return c == "WARRIOR" or c == "ROGUE" or c == "HUNTER"
+end
+M.CanDualWield = canDualWield
+
+local function pctOf(new, base, label)
+    if base <= 0 then return "noscore", label end
+    return (new - base) / base * 100, label
+end
+
+local function compareHands(link, loc, new)
+    local mh, oh = GetInventoryItemLink("player", 16), GetInventoryItemLink("player", 17)
+    if (mh and sameItem(mh, link)) or (oh and sameItem(oh, link)) then return "same" end
+    local twoHander = mh and equipLoc(mh) == "INVTYPE_2HWEAPON"
+    local ms = mh and (score(mh) or 0) or 0
+    local os = oh and (score(oh) or 0) or 0
+    if loc == "INVTYPE_2HWEAPON" then
+        if not mh and not oh then return "empty", "main hand" end
+        return pctOf(new, ms + os, oh and "main hand + off hand" or (twoHander and "two-hander" or "main hand"))
+    end
+    if OFFHAND_LOC[loc] then
+        if loc == "INVTYPE_WEAPONOFFHAND" and not canDualWield() then return nil end
+        if twoHander then return "twohander", "two-hander" end
+        if not oh then return "empty", "off hand" end
+        return pctOf(new, os, "off hand")
+    end
+    -- a one-hand or main hand weapon
+    if twoHander then return pctOf(new, ms, "two-hander (your off hand would be empty)") end
+    local ohIsWeapon = oh and (equipLoc(oh) == "INVTYPE_WEAPON" or equipLoc(oh) == "INVTYPE_WEAPONOFFHAND")
+    if loc == "INVTYPE_WEAPON" and canDualWield() and (not oh or ohIsWeapon) then
+        -- either hand: against the weaker one
+        if not mh then return "empty", "main hand" end
+        if not oh then return "empty", "off hand" end
+        if os < ms then return pctOf(new, os, "off hand") end
+    end
+    if not mh then return "empty", "main hand" end
+    return pctOf(new, ms, "main hand")
+end
+
+-- The planner's comparison, in Codex's terms.
+local function plannerCompare(P, link)
+    local ok, d = pcall(P.ItemDetails, link)
+    if not ok or type(d) ~= "table" or not d.equipLoc then return nil end
+    local loc = d.equipLoc
+    local slots = SLOTS[loc]
+    if not slots then return nil end
+    if loc == "INVTYPE_WEAPON" then slots = canDualWield() and { 16, 17 } or { 16 } end
+    if RANGED_LOC[loc] then slots = { 18 } end
+    local best, bestLabel
+    for _, slot in ipairs(slots) do
+        local eq = GetInventoryItemLink("player", slot)
+        if eq and sameItem(eq, link) then return "same" end
+        local okc, cmp = pcall(P.CompareEquipment, slot, d, P.WeightedStatScore)
+        if okc and type(cmp) == "table" and type(cmp.before) == "number" and type(cmp.after) == "number" then
+            local label = cmp.hands and "main hand + off hand" or SLOT_NAMES[slot]
+            local r
+            if cmp.before <= 0 then r = cmp.empty and "empty" or "noscore"
+            else r = (cmp.after - cmp.before) / cmp.before * 100 end
+            if type(r) ~= "number" then return r, label end
+            if not best or r > best then best, bestLabel = r, label end
+        end
+    end
+    return best, bestLabel
+end
+
 -- How an item compares with what you wear: pct (or "empty" / "noscore"),
 -- the slot it was compared against, and a debug line.
 local function compare(link)
+    local P = planner()
+    if P then return plannerCompare(P, link) end
     local loc = equipLoc(link)
     local slots = SLOTS[loc or ""]
     if not slots then return nil end
     local new = score(link)
     if not new then return nil, nil, "Codex debug: no stats readable for this item" end
     if new <= 0 then return nil, nil, "Codex debug: no stats your spec weighs" end
+    if WEAPON_LOC[loc] and not RANGED_LOC[loc] then
+        local r, label = compareHands(link, loc, new)
+        return r, label, ("Codex debug: %s vs %s, %s weights, this=%.1f"):format(loc, tostring(label), tostring(mySpec()), new)
+    end
 
     -- Compare against the weakest item in the slot(s) it can go in.
     local weakest, weakestSlot, weakestScore, detail = nil, nil, nil, {}
@@ -170,9 +266,11 @@ end
 
 -- Returns the tooltip line, plus a debug line describing the comparison.
 local function upgradeLine(link)
+    if planner() then return nil end        -- Ruinous Forever Planner's tooltip lines cover it
     local pct, slot, dbg = compare(link)
     if pct == nil or pct == "same" then return nil, dbg end
-    local slotName = SLOT_NAMES[slot] or "that slot"
+    local slotName = type(slot) == "string" and slot or SLOT_NAMES[slot] or "that slot"
+    if pct == "twohander" then return ("%sCodex: off hand (you're wielding a two-hander)|r"):format(C.dim), dbg end
     if pct == "empty" then return ("%sCodex: upgrade (nothing in %s)|r"):format(C.good, slotName), dbg end
     if pct == "noscore" then
         return ("%sCodex: upgrade (your %s item has no stats Codex weighs)|r"):format(C.good, slotName), dbg
@@ -1439,6 +1537,11 @@ local function buildJournal(page)
     ui.specCycle = W.Cycle(page, 172, specOptions(), function() return db.spec end, function(v) db.spec = v end, "Weights: ")
     ui.specCycle.tipTitle = "Which spec's stat weights the upgrade line uses (Auto = your talents)"
     ui.specCycle:SetPoint("BOTTOMLEFT", 0, 30)
+    ui.plannerNote = W.Label(page, C.dim .. "Gear upgrades:|r " .. C.white .. "Ruinous Forever Planner|r\n" .. C.dim .. "compares your gear (its tooltip lines).|r", "GameFontHighlightSmall")
+    ui.plannerNote:SetPoint("BOTTOMLEFT", 0, 8)
+    ui.plannerNote:SetWidth(176)
+    ui.plannerNote:SetJustifyH("LEFT")
+    ui.plannerNote:Hide()
     ui.entries = W.List(page, 28, function(row)
         row.btn = W.Button(row, "", 168)
         row.btn:SetPoint("LEFT", 0, 0)
@@ -1519,6 +1622,10 @@ local function refreshJournal()
     ui.sizeBtn:SetShown(raids)
     ui.sizeFixed:SetShown(not raids)
     if raids then ui.sizeBtn.Refresh() end
+    local byPlanner = planner() ~= nil
+    ui.tipCheck:SetShown(not byPlanner)
+    ui.specCycle:SetShown(not byPlanner)
+    ui.plannerNote:SetShown(byPlanner)
     ui.tipCheck:Refresh()
     ui.specCycle.Refresh()
     local mu = R:GetModule("Muster")
