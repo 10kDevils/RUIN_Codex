@@ -563,14 +563,8 @@ local function buildFilters(page)
     ui.clsBtn:SetPoint("TOPLEFT", 216, 2)
     ui.specBtn = W.MarkChoice(W.Button(page, "", 134, nil))
     ui.specBtn:SetPoint("LEFT", ui.clsBtn, "RIGHT", 4, 0)
-    ui.specBtn:SetScript("OnClick", function(_, mouse)
-        local list = specOptions()
-        local idx = 1
-        for i, s in ipairs(list) do if s == ui.spec then idx = i end end
-        idx = (mouse == "RightButton") and ((idx - 2) % #list + 1) or (idx % #list + 1)
-        ui.spec = list[idx]
-        refresh()
-    end)
+    W.AttachMenu(ui.specBtn, { width = 134, items = function() return specOptions() end,
+        current = function() return ui.spec end, pick = function(v) ui.spec = v; refresh() end })
     local tagOpts = { "All tags" }
     for _, t in ipairs(TAGS) do tagOpts[#tagOpts + 1] = t end
     ui.tagBtn = W.Cycle(page, 118, tagOpts, function() return ui.tag end, function(v) ui.tag = v; refresh() end)
