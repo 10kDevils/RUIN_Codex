@@ -8,6 +8,7 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## 0.5.4 — 2026-11-08
 
+- Item names and details come from C_Item when the old global item functions aren't there (the Retail 12 client WoW Forever runs on), so items stop showing as "Loading item...".
 - Loot lists ask the game for item names through RUIN Core's queue, a few at a time, instead of all at once.
 
 ## 0.5.3 — 2026-11-06
