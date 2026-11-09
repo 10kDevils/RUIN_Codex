@@ -14,7 +14,7 @@ end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Codex", { version = "0.5.3" })
+local M = R:RegisterModule("Codex", { version = "0.5.4" })
 ns.Codex = M
 
 local DEFAULTS = { drops = {}, kills = {}, mobs = {}, collapsed = {}, tooltip = true, spec = "Auto", installed = {} }
@@ -745,8 +745,14 @@ end
 
 local function itemInfo(id)
     if not GetItemInfo then return nil end
+    -- not on the client yet: ask through Core's queue (a loot list asks for
+    -- a hundred items at once) instead of straight to the server
+    if R.Items.IsCached and not R.Items.IsCached(tonumber(id) or id) then
+        R.Items.Request(tonumber(id) or id)
+        return nil
+    end
     local name, link, quality, _, minLevel = GetItemInfo(id)
-    if not name and C_Item and C_Item.RequestLoadItemDataByID then pcall(C_Item.RequestLoadItemDataByID, id) end
+    if not name then R.Items.Request(tonumber(id) or id) end
     return name, link, quality, minLevel
 end
 

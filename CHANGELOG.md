@@ -6,6 +6,10 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
+## 0.5.4 — 2026-11-08
+
+- Loot lists ask the game for item names through RUIN Core's queue, a few at a time, instead of all at once.
+
 ## 0.5.3 — 2026-11-06
 
 - Macros: the spec picker opens a list (it stepped through specs one click at a time); so do the class and tag pickers, the Journal's weights and the raid size (needs RUIN Core 0.5.3).
