@@ -26,7 +26,7 @@ end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Codex", { version = "0.5.5" })
+local M = R:RegisterModule("Codex", { version = "0.6.0" })
 ns.Codex = M
 
 local DEFAULTS = { drops = {}, kills = {}, mobs = {}, collapsed = {}, tooltip = true, spec = "Auto", installed = {} }
