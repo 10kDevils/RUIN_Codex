@@ -5,8 +5,8 @@
 --          healing costs
 --   right: the expected damage or healing per second
 -- "Expected" counts your critical strike chance for the spell's school and
--- the extra a critical does (half again for spells; periodic damage and
--- healing don't crit). The amounts come from the spell's own description, so
+-- the extra a critical does (half again for spells; on WoW Forever damage
+-- and healing over time can crit too). The amounts come from the spell's own description, so
 -- it works for cast, instant, channeled and periodic spells alike.
 local R = RUIN_API
 if not R then return end
@@ -133,10 +133,9 @@ function M.SpellMath(spellID, tooltip)
     local cast, channeled = castInfo(tooltip, spellID)
     local crit = critChance(parsed.heal, parsed.school)
     local direct = parsed.direct or 0
-    local expected = direct * (1 + crit * (CRIT_MULT - 1)) + (parsed.periodic or 0)
-    if channeled and parsed.periodic and not parsed.direct then
-        expected = parsed.periodic * (1 + crit * (CRIT_MULT - 1))      -- channeled ticks can crit
-    end
+    -- on WoW Forever every part can crit: direct hits, channeled ticks and
+    -- damage or healing over time alike
+    local expected = (direct + (parsed.periodic or 0)) * (1 + crit * (CRIT_MULT - 1))
     if expected <= 0 then return nil end
     local seconds
     if channeled then
