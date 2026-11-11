@@ -26,7 +26,7 @@ end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Codex", { version = "0.6.0" })
+local M = R:RegisterModule("Codex", { version = "0.6.1" })
 ns.Codex = M
 
 local DEFAULTS = { drops = {}, kills = {}, mobs = {}, collapsed = {}, tooltip = true, spec = "Auto", installed = {} }
@@ -864,8 +864,8 @@ local STATUS_TEXT = { complete = "fully documented", strong = "well documented",
                       story_only = "story only, no boss list yet", minimal = "little published yet" }
 
 ---------------------------------------------------------------------------
--- Every dungeon's loot, read from Questie or QuestieDB while you play
--- (nothing of Questie's is copied into RUIN): which NPCs stand in each
+-- Every dungeon's loot, read while you play from a quest database addon
+-- when one is installed (nothing of it is copied into RUIN): which NPCs stand in each
 -- dungeon (their spawns), then which items those NPCs drop. Built once in
 -- the background over a few seconds, saved, and built again only when the
 -- database changes. Bosses and rares get their own lists; the rest is
@@ -873,19 +873,19 @@ local STATUS_TEXT = { complete = "fully documented", strong = "well documented",
 -- outside the dungeon) and anything that isn't gear, a recipe or a quest item.
 ---------------------------------------------------------------------------
 local QL = { state = "idle" }
-M.QuestieLoot = QL
+M.DungeonLoot = QL
 local KEEP_CLASS = { [2] = true, [4] = true, [9] = true, [12] = true }   -- weapon, armor, recipe, quest
 local BOSS_WORLD_DROP = 40       -- a boss drop with more droppers than this anywhere is a world drop
 
--- The database: LibQuestieDB (standalone QuestieDB, contract 4), else Questie's own.
-local function questieSource()
+-- The database addon's tables (contract 4), or the other kind's own.
+local function lootSource()
     local lib = rawget(_G, "LibQuestieDB")
     if type(lib) == "table" and type(lib.RequireContract) == "function" then
         local ok, compatible = pcall(lib.RequireContract, 4)
         local N, I = lib.Npc, lib.Item
         if ok and compatible and type(N) == "table" and type(I) == "table" and type(N.GetAllIds) == "function"
             and type(I.GetAllIds) == "function" and type(N.Get) == "function" and type(I.Get) == "function" then
-            return { name = "QuestieDB",
+            return { name = "quest database", addon = "QuestieDB",
                      npcs = function() return N.GetAllIds() end, items = function() return I.GetAllIds() end,
                      npc = function(id, f) return N.Get(id, f) end, item = function(id, f) return I.Get(id, f) end }
         end
@@ -896,14 +896,14 @@ local function questieSource()
         if ok and type(Q) == "table" and type(Q.QueryNPCSingle) == "function" and type(Q.QueryItemSingle) == "function"
             and type(Q.NPCPointers) == "table" and type(Q.ItemPointers) == "table" then
             local function list(t) local out = {}; for id in pairs(t) do out[#out + 1] = id end; table.sort(out); return out end
-            return { name = "Questie",
+            return { name = "quest database", addon = "Questie",
                      npcs = function() return list(Q.NPCPointers) end, items = function() return list(Q.ItemPointers) end,
                      npc = function(id, f) return Q.QueryNPCSingle(id, f) end, item = function(id, f) return Q.QueryItemSingle(id, f) end }
         end
     end
     return nil
 end
-QL.Source = function() local s = questieSource(); return s and s.name end
+QL.Source = function() local s = lootSource(); return s and s.name end
 
 local function allEntries()
     local out = {}
@@ -917,7 +917,7 @@ local function stampOf(src, nNpc, nItem)
     local ver = ""
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or rawget(_G, "GetAddOnMetadata")
     if getMeta then
-        local ok, v = pcall(getMeta, src.name == "QuestieDB" and "QuestieDB" or "Questie", "Version")
+        local ok, v = pcall(getMeta, src.addon, "Version")
         ver = ok and tostring(v or "") or ""
     end
     local areas = {}
@@ -987,7 +987,7 @@ end
 -- Start reading (once); refreshes the Journal when done.
 function QL.Start()
     if QL.state ~= "idle" then return end
-    local src = questieSource()
+    local src = lootSource()
     if not src then return end
     QL.state = "building"
     local co = coroutine.create(build)
@@ -1076,12 +1076,12 @@ function QL.For(entry)
     table.sort(sections, function(a, b) if a.level ~= b.level then return a.level < b.level end return a.name < b.name end)
     return { sections = sections, trash = trash }
 end
-ns.Loot.questie = QL.For
+ns.Loot.fromDatabase = QL.For
 
 ---------------------------------------------------------------------------
 -- Dungeon quests: every quest the dungeon has for your race and class, with
 -- where it starts, the quests that unlock it, its rewards and whether you've
--- done it. RUIN Pathfinder reads them from Questie (or QuestieDB); without
+-- done it. RUIN Pathfinder reads them from RUIN Quest Data; without
 -- them the Journal shows the launch data's quest names.
 ---------------------------------------------------------------------------
 local STATE_TEXT = {
@@ -1127,7 +1127,7 @@ local function questLines(lines, dg)
     if not list then
         lines[#lines + 1] = { C.gold .. "Quests|r", header = "quests", title = "Quests" }
         for _, t in ipairs(dg.quests or {}) do lines[#lines + 1] = { "    " .. C.dim .. "-|r " .. t } end
-        local hint = not PF and "Install RUIN Pathfinder (with Questie) to see every quest for your faction, where it starts, the quests that unlock it, and a route through them."
+        local hint = not PF and "Install RUIN Pathfinder to see every quest for your faction, where it starts, the quests that unlock it, and a route through them."
             or ("Quest details: " .. tostring(why or "not available").. ".")
         lines[#lines + 1] = { "    " .. C.dim .. hint .. "|r" }
         return
@@ -1135,10 +1135,10 @@ local function questLines(lines, dg)
     local done = 0
     for _, q in ipairs(list) do if q.state == "done" then done = done + 1 end end
     local faction = UnitFactionGroup and UnitFactionGroup("player") or "your faction"
-    local qsub = ("%d quest%s, %d done · from Questie"):format(#list, #list == 1 and "" or "s", done)
+    local qsub = ("%d quest%s, %d done · from the quest database"):format(#list, #list == 1 and "" or "s", done)
     lines[#lines + 1] = { C.gold .. "Quests for " .. faction .. "|r  " .. C.dim .. qsub .. "|r", header = "quests", title = "Quests for " .. faction, sub = qsub }
     if #list == 0 then
-        lines[#lines + 1] = { "    " .. C.dim .. "Questie lists no quests here for your character yet.|r" }
+        lines[#lines + 1] = { "    " .. C.dim .. "The quest database lists no quests here for your character yet.|r" }
         for _, t in ipairs(dg.quests or {}) do lines[#lines + 1] = { "    " .. C.dim .. "- " .. t .. " (launch data)|r" } end
         return
     end
@@ -1194,7 +1194,7 @@ end
 local function journalLines(dg, isRaid)
     QL.Start()
     local loot = ns.Loot and ns.Loot.For(dg)
-    local fromQuestie = loot and loot.source == "questie"
+    local fromData = loot and loot.source == "database"
     local seen = db.drops[dg.name]
     -- drops RUIN looted, by name, so a listed name without an ID can show the real item
     local seenByName = {}
@@ -1203,8 +1203,8 @@ local function journalLines(dg, isRaid)
         if name then seenByName[name:lower()] = id end
     end
     local lines = {}
-    if fromQuestie then
-        lines[#lines + 1] = { W.TagText("Live", QL.Source() or "QuestieDB") .. C.dim .. "  Loot read from " .. (QL.Source() or "QuestieDB")
+    if fromData then
+        lines[#lines + 1] = { W.TagText("Live", QL.Source() or "quest database") .. C.dim .. "  Loot read from " .. (QL.Source() or "quest database")
             .. "'s WoW Forever database while you play" .. (dg.forever and ", with the launch data's lists" or "") .. ". \"Looted by RUIN\" is real.|r" }
     elseif dg.forever then
         lines[#lines + 1] = { W.TagText("Unverified", "WoW Forever launch data") .. C.dim .. "  From the WoW Forever launch databases ("
@@ -1244,10 +1244,10 @@ local function journalLines(dg, isRaid)
     section("Notes", dg.notes)
 
     lines[#lines + 1] = { C.gold .. "Bosses and loot|r", header = "loot", title = "Bosses and loot" }
-    if QL.state == "building" and not fromQuestie then
-        lines[#lines + 1] = { "    " .. C.dim .. "Reading every dungeon's loot from " .. (QL.Source() or "QuestieDB") .. " (a few seconds, once)...|r" }
-    elseif not fromQuestie and not QL.Source() and dg.areas then
-        lines[#lines + 1] = { "    " .. C.dim .. "Install QuestieDB (or Questie) for this dungeon's full loot list.|r" }
+    if QL.state == "building" and not fromData then
+        lines[#lines + 1] = { "    " .. C.dim .. "Reading every dungeon's loot from " .. (QL.Source() or "quest database") .. " (a few seconds, once)...|r" }
+    elseif not fromData and not QL.Source() and dg.areas then
+        lines[#lines + 1] = { "    " .. C.dim .. "Install a quest database addon for this dungeon's full loot list.|r" }
     end
     local bosses = loot and loot.bosses or {}
     if #bosses == 0 then
@@ -1275,13 +1275,13 @@ local function journalLines(dg, isRaid)
             .. (b.tip and ("  " .. C.dim .. b.tip .. "|r") or "") }
         for _, it in ipairs(b.items) do lines[#lines + 1] = itemLine(it, k) end
         if loot and #b.items == 0 then
-            lines[#lines + 1] = { "    " .. C.dim .. (fromQuestie and "- nothing listed for it in " .. (QL.Source() or "QuestieDB") .. " (for a group of bosses, see each one below)|r"
+            lines[#lines + 1] = { "    " .. C.dim .. (fromData and "- nothing listed for it in " .. (QL.Source() or "quest database") .. " (for a group of bosses, see each one below)|r"
                 or "- no list for this boss yet|r") }
         end
     end
     if loot and loot.trash and #loot.trash > 0 then
-        lines[#lines + 1] = { C.gold .. (fromQuestie and "Trash|r  " .. C.dim .. "drops from the dungeon's other mobs|r" or "Other drops inside|r"),
-            header = "trash", title = fromQuestie and "Trash" or "Other drops inside", sub = fromQuestie and "drops from the dungeon's other mobs" or nil }
+        lines[#lines + 1] = { C.gold .. (fromData and "Trash|r  " .. C.dim .. "drops from the dungeon's other mobs|r" or "Other drops inside|r"),
+            header = "trash", title = fromData and "Trash" or "Other drops inside", sub = fromData and "drops from the dungeon's other mobs" or nil }
         for _, it in ipairs(loot.trash) do lines[#lines + 1] = itemLine(it) end
     end
     local listed, listedNames = {}, {}
@@ -1330,7 +1330,7 @@ local function journalLines(dg, isRaid)
     end
     -- where the loot list comes from: always shown, under the last section
     if loot then
-        local src = loot.source == "questie" and ((QL.Source() or "QuestieDB") .. "'s WoW Forever database, read while you play") or (loot.source or "a loot data file")
+        local src = loot.source == "database" and "the WoW Forever quest database, read while you play" or (loot.source or "a loot data file")
         lines[#lines + 1] = { (loot.verified and W.TagText("Verified", "Checked on Forever") or W.TagText("Unverified", "Not checked on Forever"))
             .. C.dim .. "  Loot list: " .. src .. "|r", always = true }
     else

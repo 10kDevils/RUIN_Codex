@@ -89,12 +89,12 @@ end
 
 -- The loot entry for a Journal entry ({ id, name, bosses = { { name, tip } } }):
 -- { source, verified, trash = { items }, bosses = { { name, tip, items = { { id, chance } } } } }, or nil.
--- Loot.questie(entry), set by Codex.lua, gives the dungeon's drops read from
--- Questie or QuestieDB: { sections = { { name, rare, items = { ... } } }, trash = { ... } }
+-- Loot.fromDatabase(entry), set by Codex.lua, gives the dungeon's drops read from
+-- the quest database: { sections = { { name, rare, items = { ... } } }, trash = { ... } }
 -- or nil. When it has a list, that list leads: listed drops it lacks (by ID or
 -- name) are added, and a listed drop it has lends its drop chance and slot.
 local function merged(entry, d, q)
-    local out = { source = "questie", verified = false, trash = {}, bosses = {} }
+    local out = { source = "database", verified = false, trash = {}, bosses = {} }
     local listed = {}               -- listed items by ID and by name
     local function remember(it)
         if it.id then listed["id:" .. it.id] = it end
@@ -123,7 +123,7 @@ local function merged(entry, d, q)
         if i then usedSec[i] = true; for _, it in ipairs(q.sections[i].items) do items[#items + 1] = take(it) end end
         return items
     end
-    -- the journal's bosses, in order, then rares and other named drops Questie knows
+    -- the journal's bosses, in order, then rares and other named drops the database knows
     for _, jb in ipairs(entry.bosses or {}) do
         out.bosses[#out.bosses + 1] = { name = jb[1], tip = jb[2], items = bossItems(jb[1]) }
     end
@@ -134,7 +134,7 @@ local function merged(entry, d, q)
             out.bosses[#out.bosses + 1] = { name = sec.name, tip = sec.rare and "Rare: not every run." or nil, items = items }
         end
     end
-    -- listed drops Questie doesn't have: under their boss, or a section of their own
+    -- listed drops the database doesn't have: under their boss, or a section of their own
     local byName = {}
     for _, b in ipairs(out.bosses) do byName[key(b.name)] = b end
     for _, lb in ipairs(d and d.bosses or {}) do
@@ -158,7 +158,7 @@ end
 function Loot.For(entry)
     if type(entry) ~= "table" then return nil end
     local d = Loot.data[key(entry.id)] or Loot.data[key(entry.name)]
-    local q = Loot.questie and Loot.questie(entry)
+    local q = Loot.fromDatabase and Loot.fromDatabase(entry)
     if q then
         -- the Classic sample is replaced; the WoW Forever launch lists are merged in
         if d and d.source and tostring(d.source):find("Classic", 1, true) then d = nil end
