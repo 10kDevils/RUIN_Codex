@@ -6,10 +6,10 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
-
 ## 0.5.5 — 2026-11-11
 
 - Spell tooltips end with spell math: the mana (or rage, energy) each expected point of damage or healing costs on the left, and the expected damage or healing per second on the right. "Expected" counts your critical strike chance for the spell's school and that a critical does half again (periodic damage and healing don't crit; channeled ticks can). It reads the amounts from the spell's description, so it works for cast, instant, channeled and periodic spells: per second of the cast (at least the global cooldown), of the channel, or of the damage or heal over time.
+
 ## 0.5.4 — 2026-11-08
 
 - Item names and details come from C_Item when the old global item functions aren't there (the Retail 12 client WoW Forever runs on), so items stop showing as "Loading item...".
