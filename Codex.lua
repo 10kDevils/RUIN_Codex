@@ -52,8 +52,45 @@ local function myClass()
     return class
 end
 
+-- Points spent in each talent tree: { { name, points }, ... } (names as the
+-- weights know them), or nil when the client has no talent trees.
+local function treePoints(class)
+    if not GetTalentTabInfo then return nil end
+    local out = {}
+    for tab = 1, 3 do
+        local res = { pcall(GetTalentTabInfo, tab) }
+        if res[1] then
+            -- the name is the first string; points the first whole number 0-61 after it
+            -- (newer clients put an id before the name and an icon id after it)
+            local name, points
+            for i = 2, #res do
+                local v = res[i]
+                if not name and type(v) == "string" and v ~= "" then name = v
+                elseif name and points == nil and type(v) == "number" and v >= 0 and v <= 61 and v == math.floor(v) then points = v end
+            end
+            name = name and (ns.SpecAlias[name] or name)
+            if name and ns.SpecWeights[class] and ns.SpecWeights[class][name] then out[#out + 1] = { name, points or 0 } end
+        end
+    end
+    return #out > 0 and out or nil
+end
+M.TreePoints = function() return treePoints(myClass()) end
+
 local function talentSpec(class)
-    -- Modern clients: the chosen specialization.
+    -- Talent trees first: the tree with the most points. WoW Forever has
+    -- talent trees, and its client still answers GetSpecialization with the
+    -- first spec (Discipline for a priest) whatever your talents are.
+    local trees = treePoints(class)
+    if trees then
+        local best, second
+        for _, t in ipairs(trees) do
+            if not best or t[2] > best[2] then best, second = t, best
+            elseif not second or t[2] > second[2] then second = t end
+        end
+        if best and best[2] > 0 and (not second or best[2] > second[2]) then return best[1] end
+        if best and best[2] > 0 then return best[1] end        -- a tie: the first of them
+    end
+    -- No talent points spent: the chosen specialization, on clients that have one.
     if GetSpecialization and GetSpecializationInfo then
         local ok, idx = pcall(GetSpecialization)
         if ok and idx then
@@ -61,26 +98,6 @@ local function talentSpec(class)
             name = name and (ns.SpecAlias[name] or name)
             if name and ns.SpecWeights[class] and ns.SpecWeights[class][name] then return name end
         end
-    end
-    -- Talent trees: the one with the most points.
-    if GetTalentTabInfo then
-        local bestName, bestPoints = nil, 0
-        for tab = 1, 3 do
-            local res = { pcall(GetTalentTabInfo, tab) }
-            if res[1] then
-                local name, points
-                for i = 2, #res do
-                    local v = res[i]
-                    if not name and type(v) == "string" and v ~= "" then name = v
-                    elseif name and points == nil and type(v) == "number" and v >= 0 and v <= 61 and v == math.floor(v) then points = v end
-                end
-                name = name and (ns.SpecAlias[name] or name)
-                if name and points and points > bestPoints and ns.SpecWeights[class] and ns.SpecWeights[class][name] then
-                    bestName, bestPoints = name, points
-                end
-            end
-        end
-        if bestName then return bestName end
     end
     return nil
 end
@@ -90,6 +107,7 @@ local function mySpec()
     if db.spec ~= "Auto" and ns.SpecWeights[class] and ns.SpecWeights[class][db.spec] then return db.spec end
     return talentSpec(class) or (ns.SpecOrder[class] and ns.SpecOrder[class][1])
 end
+M.MySpec = function() return mySpec() end
 
 ---------------------------------------------------------------------------
 -- Item helpers
@@ -1553,7 +1571,8 @@ local function buildJournal(page)
     ui.tipCheck.tip = "Item tooltips say how an item compares with what you wear, weighed for your spec (spell power and other Equip: lines count)."
     ui.tipCheck:SetPoint("BOTTOMLEFT", 0, 2)
     ui.specCycle = W.Cycle(page, 172, specOptions(), function() return db.spec end, function(v) db.spec = v end, "Weights: ")
-    ui.specCycle.tipTitle = "Which spec's stat weights the upgrade line uses (Auto = your talents)"
+    ui.specCycle.format = function(v) return v == "Auto" and ("Auto (" .. tostring(mySpec()) .. ")") or v end
+    ui.specCycle.tipTitle = "Which spec's stat weights the upgrade line uses (Auto = the talent tree you have the most points in)"
     ui.specCycle:SetPoint("BOTTOMLEFT", 0, 30)
     ui.plannerNote = W.Label(page, C.dim .. "Gear upgrades:|r " .. C.white .. "Ruinous Forever Planner|r\n" .. C.dim .. "compares your gear (its tooltip lines).|r", "GameFontHighlightSmall")
     ui.plannerNote:SetPoint("BOTTOMLEFT", 0, 8)

@@ -8,6 +8,7 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## 0.6.1 — 2026-11-11
 
+- The upgrade line's Auto spec reads your talents first: the tree with the most points. WoW Forever's client answers "which specialization" with the class's first spec whatever your talents are, so a Shadow priest was weighed as Discipline. The client's answer is used only when no talent points are spent. The Weights button shows what Auto picked, e.g. "Auto (Shadow)".
 - The Journal's wording about where dungeon loot and quests come from now says "the quest database" everywhere, and tells you to install a quest database addon for a dungeon's full loot list.
 
 ## 0.6.0 — 2026-11-11
