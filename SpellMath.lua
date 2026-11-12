@@ -183,6 +183,9 @@ local function onSpellTooltip(tooltip, data, spellID)
     local stamp = tostring(GetTime and GetTime() or 0) .. ":" .. tostring(id) .. ":" .. tostring(tooltip.NumLines and tooltip:NumLines() or 0)
     if tooltip.ruinSpellMath == stamp then return end
     local ok, m = pcall(M.SpellMath, id, tooltip)
+    -- what happened last, for /codex spellmath
+    M.lastSpellMath = { id = id, ok = ok, err = not ok and tostring(m) or nil, none = ok and not m or nil,
+                        text = ok and not m and tostring(description(tooltip, id) or "(no description)"):sub(1, 120) or nil }
     if not (ok and m) then return end
     local what = m.heal and "heal" or "damage"
     local left
@@ -192,6 +195,8 @@ local function onSpellTooltip(tooltip, data, spellID)
     local right = ("%s%.1f %s|r"):format(C.gold, m.perSecond, m.heal and "HPS" or "DPS")
     tooltip:AddDoubleLine(left, right)
     tooltip.ruinSpellMath = tostring(GetTime and GetTime() or 0) .. ":" .. tostring(id) .. ":" .. tostring(tooltip.NumLines and tooltip:NumLines() or 0)
+    M.lastSpellMath.shown = true
+    return true
 end
 M.OnSpellTooltip = onSpellTooltip
 
@@ -209,4 +214,44 @@ if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and Enum and
     end
 elseif GameTooltip and GameTooltip.HookScript then
     GameTooltip:HookScript("OnTooltipSetSpell", onSpellTooltip)
+end
+
+-- The game's own tooltip calls too (an action button, the spellbook, a spell
+-- link), in case the client doesn't pass those through the tooltip data
+-- calls above. Each tooltip gets the line once either way.
+local function after(tooltip, id)
+    if id and onSpellTooltip(tooltip, nil, id) and tooltip.Show then tooltip:Show() end
+end
+local function hookTip(tip)
+    if not (tip and hooksecurefunc) then return end
+    if tip.SetAction then
+        hooksecurefunc(tip, "SetAction", function(self, slot)
+            if not GetActionInfo then return end
+            local kind, id = GetActionInfo(slot)
+            if kind == "spell" then after(self, id)
+            elseif kind == "macro" and GetMacroSpell then after(self, (GetMacroSpell(id))) end
+        end)
+    end
+    if tip.SetSpellByID then hooksecurefunc(tip, "SetSpellByID", function(self, id) after(self, id) end) end
+    if tip.SetSpellBookItem then
+        hooksecurefunc(tip, "SetSpellBookItem", function(self, slot, bank)
+            local id
+            local SB = rawget(_G, "C_SpellBook")
+            if SB and SB.GetSpellBookItemInfo then
+                local ok, info = pcall(SB.GetSpellBookItemInfo, slot, bank)
+                id = ok and type(info) == "table" and (info.spellID or info.actionID) or nil
+            end
+            if not id and GetSpellBookItemInfo then id = select(2, GetSpellBookItemInfo(slot, bank)) end
+            after(self, id)
+        end)
+    end
+end
+hookTip(GameTooltip)
+
+function M.SpellMathReport()
+    local l = M.lastSpellMath
+    if not l then return "No spell tooltip seen yet: hover a spell, then try again." end
+    if l.shown then return ("Last spell (%s): line shown."):format(tostring(l.id)) end
+    if l.err then return ("Last spell (%s): error %s"):format(tostring(l.id), l.err) end
+    return ("Last spell (%s): no damage or healing found in: %s"):format(tostring(l.id), tostring(l.text))
 end

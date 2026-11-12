@@ -2064,6 +2064,9 @@ SlashCmdList.RUINCODEX = function(msg)
     elseif cmd == "commands" or cmd == "cmds" then tab = TAB_MACROS; if ns.Macros then ns.Macros.SetMode("commands") end
     elseif cmd == "path" or cmd == "gear" or cmd == "bis" or cmd == "upgrades" then
         return M:Print("Gear Path and best-in-slot lists have left Codex; RUIN will work with a gear addon for them. Item tooltips still show the upgrade line.")
+    elseif cmd == "spellmath" then
+        M:Print(M.SpellMathReport and M.SpellMathReport() or "Spell math isn't loaded.")
+        return
     elseif cmd == "spec" and rest == "" then
         local trees, src = M.TreePoints()
         local parts = {}
