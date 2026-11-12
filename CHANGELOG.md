@@ -8,6 +8,7 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## 0.6.1 — 2026-11-11
 
+- Spell math line actually visible on macro tooltips: the tooltip now grows to fit the line it adds (a macro's tooltip didn't resize on its own, so the line was added but cut off).
 - Spell math also hooks the game's own tooltip calls (action buttons, the spellbook, spell links), in case the client doesn't send those tooltips through the tooltip-data calls; each tooltip still gets the line once. `/codex spellmath` says what happened with the last spell you hovered (line shown, no damage found, or the error).
 - Spell math shows on spells inside macros too: an action bar macro's tooltip gets the mana per damage or healing and DPS or HPS line for the spell the macro casts (GetMacroSpell), once.
 - **Security:** dungeon drop and kill reports from others are checked: the same report from the same player twice in a few seconds counts once, each player has a budget of reports every few minutes, and the catch-up totals another member sends can't make a count jump past twice yours. With loot sharing off (RUIN Core), Codex doesn't send your drops and kills.

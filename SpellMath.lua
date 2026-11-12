@@ -194,6 +194,8 @@ local function onSpellTooltip(tooltip, data, spellID)
     else left = " " end
     local right = ("%s%.1f %s|r"):format(C.gold, m.perSecond, m.heal and "HPS" or "DPS")
     tooltip:AddDoubleLine(left, right)
+    -- the tooltip grows to fit the new line (a macro's tooltip doesn't on its own)
+    if tooltip.Show and tooltip.IsShown and tooltip:IsShown() then tooltip:Show() end
     tooltip.ruinSpellMath = tostring(GetTime and GetTime() or 0) .. ":" .. tostring(id) .. ":" .. tostring(tooltip.NumLines and tooltip:NumLines() or 0)
     M.lastSpellMath.shown = true
     return true
@@ -220,7 +222,7 @@ end
 -- link), in case the client doesn't pass those through the tooltip data
 -- calls above. Each tooltip gets the line once either way.
 local function after(tooltip, id)
-    if id and onSpellTooltip(tooltip, nil, id) and tooltip.Show then tooltip:Show() end
+    if id then onSpellTooltip(tooltip, nil, id) end
 end
 local function hookTip(tip)
     if not (tip and hooksecurefunc) then return end
