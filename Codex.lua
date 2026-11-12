@@ -54,7 +54,48 @@ end
 
 -- Points spent in each talent tree: { { name, points }, ... } (names as the
 -- weights know them), or nil when the client has no talent trees.
+-- WoW Forever: the talent trees live in the trait system. The active config
+-- (type CamelotCombat) has one tree; its three tabs are trait groups, and
+-- each group's currency says how many points are spent in it (a group with
+-- none spent is left out of the answer).
+local function sv(v) return not (issecretvalue and issecretvalue(v)) and v or nil end
+local function traitTreePoints(class)
+    local CT, TR = rawget(_G, "C_ClassTalents"), rawget(_G, "C_Traits")
+    if not (CT and CT.GetActiveConfigID and TR and TR.GetConfigInfo and TR.GetGroupDisplayInfoByTreeID and TR.GetGroupCurrencyInfo) then return nil end
+    local ok, configID = pcall(CT.GetActiveConfigID)
+    configID = ok and sv(configID)
+    if not configID then return nil end
+    local okc, info = pcall(TR.GetConfigInfo, configID)
+    local treeID = okc and type(info) == "table" and type(info.treeIDs) == "table" and sv(info.treeIDs[1])
+    if not treeID then return nil end
+    local okg, groups = pcall(TR.GetGroupDisplayInfoByTreeID, treeID)
+    if not (okg and type(groups) == "table" and #groups > 0) then return nil end
+    table.sort(groups, function(a, b) return (tonumber(a.orderIndex) or 0) < (tonumber(b.orderIndex) or 0) end)
+    local ids = {}
+    for _, g in ipairs(groups) do if sv(g.groupID) then ids[#ids + 1] = g.groupID end end
+    local spent = {}
+    local okp, list = pcall(TR.GetGroupCurrencyInfo, configID, ids)
+    if okp and type(list) == "table" then
+        for _, e in ipairs(list) do
+            local n = 0
+            for _, c in ipairs(type(e.currencyInfos) == "table" and e.currencyInfos or {}) do n = n + (tonumber(sv(c.spent)) or 0) end
+            if sv(e.traitNodeGroupID) then spent[e.traitNodeGroupID] = n end
+        end
+    end
+    local order = ns.SpecOrder[class] or {}
+    local out = {}
+    for i, g in ipairs(groups) do
+        local name = sv(g.displayName)
+        name = name and (ns.SpecAlias[name] or name)
+        if not (name and ns.SpecWeights[class] and ns.SpecWeights[class][name]) then name = order[i] end
+        if name then out[#out + 1] = { name, spent[g.groupID] or 0, tab = i } end
+    end
+    return #out > 0 and out or nil, "trait groups"
+end
+
 local function treePoints(class)
+    local fromTraits, src = traitTreePoints(class)
+    if fromTraits then return fromTraits, src end
     if not GetTalentTabInfo then return nil end
     local out = {}
     for tab = 1, 3 do
@@ -98,6 +139,13 @@ local function treePoints(class)
     return #out > 0 and out or nil
 end
 M.TreePoints = function() return treePoints(myClass()) end
+M.TalentProbe = function()
+    local have = {}
+    for _, n in ipairs({ "C_ClassTalents", "C_Traits", "GetTalentTabInfo", "GetTalentInfo", "GetNumTalents" }) do
+        if rawget(_G, n) then have[#have + 1] = n end
+    end
+    return table.concat(have, ", ")
+end
 
 local function talentSpec(class)
     -- Talent trees first: the tree with the most points. WoW Forever has
@@ -1936,7 +1984,7 @@ function M:OnEnable()
     self:RegisterEvent("CHAT_MSG_LOOT", onLoot)
     -- keep Ruinous Forever Planner on the spec your talents say
     hookPlanner()
-    for _, ev in ipairs({ "PLAYER_ENTERING_WORLD", "CHARACTER_POINTS_CHANGED", "PLAYER_TALENT_UPDATE" }) do
+    for _, ev in ipairs({ "PLAYER_ENTERING_WORLD", "CHARACTER_POINTS_CHANGED", "PLAYER_TALENT_UPDATE", "TRAIT_CONFIG_UPDATED", "TRAIT_TREE_CURRENCY_INFO_UPDATED" }) do
         pcall(self.RegisterEvent, self, ev, function() hookPlanner(); C_Timer.After(1, syncPlanner) end)
     end
     -- the bank as last seen, for the best off hand you own
@@ -1981,11 +2029,14 @@ SlashCmdList.RUINCODEX = function(msg)
     elseif cmd == "path" or cmd == "gear" or cmd == "bis" or cmd == "upgrades" then
         return M:Print("Gear Path and best-in-slot lists have left Codex; RUIN will work with a gear addon for them. Item tooltips still show the upgrade line.")
     elseif cmd == "spec" and rest == "" then
-        local trees = M.TreePoints()
+        local trees, src = M.TreePoints()
         local parts = {}
         for _, t in ipairs(trees or {}) do parts[#parts + 1] = t[1] .. " " .. t[2] end
-        M:Print(("Talent points: %s. Auto picks %s; the weights in use: %s."):format(
-            #parts > 0 and table.concat(parts, ", ") or "none readable", tostring(M.TalentSpec() or "(none: the client's spec)"), tostring(mySpec())))
+        M:Print(("Talent points: %s%s. Auto picks %s; the weights in use: %s%s."):format(
+            #parts > 0 and table.concat(parts, ", ") or "none readable", src and (" (from " .. src .. ")") or "",
+            tostring(M.TalentSpec() or "(none: the client's spec)"), tostring(mySpec()),
+            db.spec ~= "Auto" and " (picked by hand; /codex spec auto for Auto)" or ""))
+        if #parts == 0 then M:Print("Talent APIs here: " .. M.TalentProbe()) end
         return
     elseif cmd == "spec" then
         local pick = "Auto"
