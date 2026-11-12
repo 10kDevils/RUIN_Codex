@@ -152,12 +152,36 @@ function M.SpellMath(spellID, tooltip)
     }
 end
 
-local function onSpellTooltip(tooltip, data)
+-- The spell a macro casts: from the tooltip itself, or from the action button
+-- it belongs to (GetActionInfo gives the macro, GetMacroSpell its spell).
+local function macroSpell(tooltip, data)
+    if tooltip.GetSpell then
+        local ok, _, sid = pcall(tooltip.GetSpell, tooltip)
+        if ok and type(sid) == "number" then return sid end
+    end
+    local macro
+    local owner = tooltip.GetOwner and tooltip:GetOwner()
+    local action = owner and (owner.action or (owner.GetAttribute and owner:GetAttribute("action")))
+    if type(action) == "number" and GetActionInfo then
+        local kind, id = GetActionInfo(action)
+        if kind == "macro" then macro = id elseif kind == "spell" then return id end
+    end
+    if not macro and type(data) == "table" and type(data.id) == "number" then macro = data.id end
+    if macro and GetMacroSpell then
+        local ok, sid = pcall(GetMacroSpell, macro)
+        if ok and type(sid) == "number" then return sid end
+    end
+end
+
+local function onSpellTooltip(tooltip, data, spellID)
     local sdb = M.db
     if sdb and sdb.spellMath == false then return end
-    local id = type(data) == "table" and data.id
+    local id = spellID or (type(data) == "table" and data.id)
     if not id and tooltip.GetSpell then id = select(2, tooltip:GetSpell()) end
     if not id or (issecretvalue and issecretvalue(id)) then return end
+    -- once per tooltip showing (a macro's tooltip can come through as both)
+    local stamp = tostring(GetTime and GetTime() or 0) .. ":" .. tostring(id) .. ":" .. tostring(tooltip.NumLines and tooltip:NumLines() or 0)
+    if tooltip.ruinSpellMath == stamp then return end
     local ok, m = pcall(M.SpellMath, id, tooltip)
     if not (ok and m) then return end
     local what = m.heal and "heal" or "damage"
@@ -167,11 +191,22 @@ local function onSpellTooltip(tooltip, data)
     else left = " " end
     local right = ("%s%.1f %s|r"):format(C.gold, m.perSecond, m.heal and "HPS" or "DPS")
     tooltip:AddDoubleLine(left, right)
+    tooltip.ruinSpellMath = tostring(GetTime and GetTime() or 0) .. ":" .. tostring(id) .. ":" .. tostring(tooltip.NumLines and tooltip:NumLines() or 0)
 end
 M.OnSpellTooltip = onSpellTooltip
 
+-- a spell on an action bar inside a macro: the tooltip is the macro's
+local function onMacroTooltip(tooltip, data)
+    local ok, sid = pcall(macroSpell, tooltip, data)
+    if ok and sid and not (issecretvalue and issecretvalue(sid)) then onSpellTooltip(tooltip, nil, sid) end
+end
+M.OnMacroTooltip = onMacroTooltip
+
 if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and Enum and Enum.TooltipDataType and Enum.TooltipDataType.Spell then
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Spell, onSpellTooltip)
+    if Enum.TooltipDataType.Macro then
+        TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Macro, onMacroTooltip)
+    end
 elseif GameTooltip and GameTooltip.HookScript then
     GameTooltip:HookScript("OnTooltipSetSpell", onSpellTooltip)
 end

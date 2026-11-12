@@ -8,6 +8,7 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## 0.6.1 — 2026-11-11
 
+- Spell math shows on spells inside macros too: an action bar macro's tooltip gets the mana per damage or healing and DPS or HPS line for the spell the macro casts (GetMacroSpell), once.
 - **Security:** dungeon drop and kill reports from others are checked: the same report from the same player twice in a few seconds counts once, each player has a budget of reports every few minutes, and the catch-up totals another member sends can't make a count jump past twice yours. With loot sharing off (RUIN Core), Codex doesn't send your drops and kills.
 - Auto reads WoW Forever's talents where they really are: the trait system (the active talent config's tree, its three tab groups, and the points spent in each). The old talent-tree functions don't exist on Forever, so Auto couldn't see any points before. `/codex spec` says where the points came from, and lists the talent functions the client has if it finds none.
 - With Ruinous Forever Planner, the upgrade numbers follow your talents too. The planner picks its profile from the client's spec, and when the client gives none it falls back to the spec last picked in its own menu; Codex now sets it to the talent tree with the most points (at login and whenever your talents change).
