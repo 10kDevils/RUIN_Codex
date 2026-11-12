@@ -8,6 +8,7 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## 0.6.1 — 2026-11-11
 
+- **A new look, with the rest of the suite.** Codex's pages take its violet through and through: the open tab's underline, check marks, the bar on a row under the mouse and the edge a button gets when you point at it. Its header carries a drawing of an arcane circle beside a page of script, the points of its star glowing in turn, and Codex has its own icon (an open book) on its tab, its header and in the AddOns list.
 - Spell math works with more tooltips: it reads a macro's spell the way newer clients give it (the action's own spell), or by the spell name on the tooltip, and checks the tooltip itself for its line instead of counting lines. If another addon clears or rebuilds the tooltip after Codex, the line goes back on within a quarter second. `/codex spellmath` names the tooltip the line went on and whether it was still there a moment later.
 - Spell math line actually visible on macro tooltips: the tooltip now grows to fit the line it adds (a macro's tooltip didn't resize on its own, so the line was added but cut off).
 - Spell math also hooks the game's own tooltip calls (action buttons, the spellbook, spell links), in case the client doesn't send those tooltips through the tooltip-data calls; each tooltip still gets the line once. `/codex spellmath` says what happened with the last spell you hovered (line shown, no damage found, or the error).
