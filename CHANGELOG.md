@@ -8,6 +8,8 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## 0.6.1 — 2026-11-11
 
+- With Ruinous Forever Planner, the upgrade numbers follow your talents too. The planner picks its profile from the client's spec, and when the client gives none it falls back to the spec last picked in its own menu; Codex now sets it to the talent tree with the most points (at login and whenever your talents change).
+- Auto counts talent points even when the trees don't report them: it adds up each talent's rank. `/codex spec` shows the points it reads per tree and what Auto picks.
 - A one-hander against the two-hander you wield is weighed with your best off hand: the best-scoring shield (for classes that use them), held item, or off hand weapon (if you can wield two) in your bags or bank, and the pair is compared with the whole two-hander. The bank is remembered from the last time you opened it. With Ruinous Forever Planner running, Codex still shows its line for this case.
 - The upgrade line's Auto spec reads your talents first: the tree with the most points. WoW Forever's client answers "which specialization" with the class's first spec whatever your talents are, so a Shadow priest was weighed as Discipline. The client's answer is used only when no talent points are spent. The Weights button shows what Auto picked, e.g. "Auto (Shadow)".
 - The Journal's wording about where dungeon loot and quests come from now says "the quest database" everywhere, and tells you to install a quest database addon for a dungeon's full loot list.

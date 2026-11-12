@@ -69,7 +69,30 @@ local function treePoints(class)
                 elseif name and points == nil and type(v) == "number" and v >= 0 and v <= 61 and v == math.floor(v) then points = v end
             end
             name = name and (ns.SpecAlias[name] or name)
-            if name and ns.SpecWeights[class] and ns.SpecWeights[class][name] then out[#out + 1] = { name, points or 0 } end
+            if name and ns.SpecWeights[class] and ns.SpecWeights[class][name] then out[#out + 1] = { name, points or 0, tab = tab } end
+        end
+    end
+    -- no points from the tree headers: count the talents themselves
+    local total = 0
+    for _, t in ipairs(out) do total = total + t[2] end
+    if total == 0 and GetNumTalents and GetTalentInfo then
+        local order = ns.SpecOrder[class] or {}
+        for tab = 1, 3 do
+            local okn, n = pcall(GetNumTalents, tab)
+            local sum = 0
+            for i = 1, (okn and tonumber(n) or 0) do
+                local res = { pcall(GetTalentInfo, tab, i) }
+                if res[1] then
+                    local rank
+                    if type(res[2]) == "table" then rank = res[2].rank or res[2].currentRank
+                    else rank = res[6] end                      -- name, icon, tier, column, rank, max rank
+                    if type(rank) == "number" then sum = sum + rank end
+                end
+            end
+            local entry
+            for _, t in ipairs(out) do if t.tab == tab then entry = t end end
+            if entry then entry[2] = sum
+            elseif order[tab] then out[#out + 1] = { order[tab], sum, tab = tab } end
         end
     end
     return #out > 0 and out or nil
@@ -108,6 +131,44 @@ local function mySpec()
     return talentSpec(class) or (ns.SpecOrder[class] and ns.SpecOrder[class][1])
 end
 M.MySpec = function() return mySpec() end
+M.TalentSpec = function() return talentSpec(myClass()) end
+
+-- Ruinous Forever Planner picks its profile from the client's spec, and when
+-- the client gives none, from the spec last picked in its own menu. Codex
+-- gives it the talent tree with the most points instead.
+local PLANNER_NAME = { ["Feral (cat)"] = "Feral", ["Feral (bear)"] = "Guardian" }
+local syncing
+local function syncPlanner()
+    local P = rawget(_G, "RuinousForeverPlanner")
+    if syncing or type(P) ~= "table" or type(P.Profile) ~= "function" or not P.char or P.detectedSpec then return end
+    local class = P.actualClass or myClass()
+    local spec = talentSpec(class)
+    if not spec then return end
+    local list = P.Data and P.Data.profiles and P.Data.profiles[class]
+    if type(list) ~= "table" then return end
+    local want = PLANNER_NAME[spec] or spec
+    for _, v in ipairs(list) do
+        if v:lower() == want:lower() then
+            if P.char.spec ~= v then
+                syncing = true
+                pcall(P.Profile, class, v)
+                syncing = false
+                if type(P.Refresh) == "function" then pcall(P.Refresh) end
+            end
+            P.profileDetection = "Talent points (RUIN Codex): " .. v
+            return
+        end
+    end
+end
+M.SyncPlanner = syncPlanner
+local plannerHooked
+local function hookPlanner()
+    local P = rawget(_G, "RuinousForeverPlanner")
+    if plannerHooked or type(P) ~= "table" or type(P.AutoProfile) ~= "function" then return end
+    plannerHooked = true
+    hooksecurefunc(P, "AutoProfile", syncPlanner)
+end
+M.HookPlanner = hookPlanner
 
 ---------------------------------------------------------------------------
 -- Item helpers
@@ -1873,6 +1934,11 @@ function M:OnEnable()
     end)
     self:AddTab("Codex", buildPage)
     self:RegisterEvent("CHAT_MSG_LOOT", onLoot)
+    -- keep Ruinous Forever Planner on the spec your talents say
+    hookPlanner()
+    for _, ev in ipairs({ "PLAYER_ENTERING_WORLD", "CHARACTER_POINTS_CHANGED", "PLAYER_TALENT_UPDATE" }) do
+        pcall(self.RegisterEvent, self, ev, function() hookPlanner(); C_Timer.After(1, syncPlanner) end)
+    end
     -- the bank as last seen, for the best off hand you own
     local bankOpen
     self:RegisterEvent("BANKFRAME_OPENED", function() bankOpen = true; readBank() end)
@@ -1914,6 +1980,13 @@ SlashCmdList.RUINCODEX = function(msg)
     elseif cmd == "commands" or cmd == "cmds" then tab = TAB_MACROS; if ns.Macros then ns.Macros.SetMode("commands") end
     elseif cmd == "path" or cmd == "gear" or cmd == "bis" or cmd == "upgrades" then
         return M:Print("Gear Path and best-in-slot lists have left Codex; RUIN will work with a gear addon for them. Item tooltips still show the upgrade line.")
+    elseif cmd == "spec" and rest == "" then
+        local trees = M.TreePoints()
+        local parts = {}
+        for _, t in ipairs(trees or {}) do parts[#parts + 1] = t[1] .. " " .. t[2] end
+        M:Print(("Talent points: %s. Auto picks %s; the weights in use: %s."):format(
+            #parts > 0 and table.concat(parts, ", ") or "none readable", tostring(M.TalentSpec() or "(none: the client's spec)"), tostring(mySpec())))
+        return
     elseif cmd == "spec" then
         local pick = "Auto"
         for _, s in ipairs(ns.SpecOrder[myClass() or ""] or {}) do if s:lower() == rest then pick = s end end
