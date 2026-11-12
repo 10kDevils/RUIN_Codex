@@ -201,6 +201,80 @@ local function canDualWield()
 end
 M.CanDualWield = canDualWield
 
+-- Your best off hand, for a one-hander weighed against the two-hander you
+-- wield: the best-scoring off hand piece you could put on (a shield for a
+-- class that uses them, a held item, or an off hand weapon if you can wield
+-- two) in your bags or your bank (the bank as last seen open).
+local SHIELD_CLASS = { WARRIOR = true, PALADIN = true, SHAMAN = true }
+local function bankKey() return UnitGUID and UnitGUID("player") or "me" end
+local function bagSlots()
+    local CC = rawget(_G, "C_Container")
+    return CC, (CC and CC.GetContainerNumSlots), (CC and CC.GetContainerItemLink)
+end
+local function bankBagIds()
+    local ids = { -1 }
+    local first = (rawget(_G, "NUM_BAG_SLOTS") or 4) + 1
+    for b = first, first + (rawget(_G, "NUM_BANKBAGSLOTS") or 7) - 1 do ids[#ids + 1] = b end
+    local BI = Enum and Enum.BagIndex
+    if BI then
+        for i = 1, 6 do
+            local id = BI["CharacterBankTab_" .. i]
+            if id then ids[#ids + 1] = id end
+        end
+    end
+    return ids
+end
+local function readBank()
+    local CC, num, getLink = bagSlots()
+    if not (num and getLink) then return end
+    local out = {}
+    for _, bag in ipairs(bankBagIds()) do
+        local ok, n = pcall(num, bag)
+        for slot = 1, (ok and n or 0) do
+            local link = getLink(bag, slot)
+            if link then out[#out + 1] = link end
+        end
+    end
+    db.bank = type(db.bank) == "table" and db.bank or {}
+    db.bank[bankKey()] = out
+end
+M.ReadBank = readBank
+
+local function canUseOffhand(link)
+    local loc = equipLoc(link)
+    if loc == "INVTYPE_HOLDABLE" then -- anyone
+    elseif loc == "INVTYPE_SHIELD" then if not SHIELD_CLASS[myClass() or ""] then return false end
+    elseif loc == "INVTYPE_WEAPONOFFHAND" or loc == "INVTYPE_WEAPON" then if not canDualWield() then return false end
+    else return false end
+    local minLevel = select(5, GetItemInfo(link))
+    if minLevel and UnitLevel and minLevel > (UnitLevel("player") or 0) then return false end
+    return true
+end
+
+local function bestOffhand(except)
+    local CC, num, getLink = bagSlots()
+    local links = {}
+    if num and getLink then
+        for bag = 0, (rawget(_G, "NUM_BAG_SLOTS") or 4) do
+            for slot = 1, num(bag) or 0 do
+                local l = getLink(bag, slot)
+                if l then links[#links + 1] = l end
+            end
+        end
+    end
+    for _, l in ipairs(type(db.bank) == "table" and db.bank[bankKey()] or {}) do links[#links + 1] = l end
+    local best, bestScore
+    local skip = except and itemIdFromLink(except)
+    for _, l in ipairs(links) do
+        if itemIdFromLink(l) ~= skip and canUseOffhand(l) then
+            local sc = score(l)
+            if sc and sc > 0 and (not bestScore or sc > bestScore) then best, bestScore = l, sc end
+        end
+    end
+    return best, bestScore
+end
+M.BestOffhand = bestOffhand
+
 local function pctOf(new, base, label)
     if base <= 0 then return "noscore", label end
     return (new - base) / base * 100, label
@@ -223,7 +297,15 @@ local function compareHands(link, loc, new)
         return pctOf(new, os, "off hand")
     end
     -- a one-hand or main hand weapon
-    if twoHander then return pctOf(new, ms, "two-hander (your off hand would be empty)") end
+    if twoHander then
+        -- with your best off hand from your bags or bank, against the whole two-hander
+        local ohLink, ohScore = bestOffhand(link)
+        if ohLink then
+            local name = GetItemInfo(ohLink) or "your best off hand"
+            return pctOf(new + ohScore, ms, "two-hander (with " .. name .. " in the off hand)")
+        end
+        return pctOf(new, ms, "two-hander (your off hand would be empty)")
+    end
     local ohIsWeapon = oh and (equipLoc(oh) == "INVTYPE_WEAPON" or equipLoc(oh) == "INVTYPE_WEAPONOFFHAND")
     if loc == "INVTYPE_WEAPON" and canDualWield() and (not oh or ohIsWeapon) then
         -- either hand: against the weaker one
@@ -236,7 +318,19 @@ local function compareHands(link, loc, new)
 end
 
 -- The planner's comparison, in Codex's terms.
+local function oneHandVsTwoHander(link)
+    local loc = equipLoc(link)
+    if loc ~= "INVTYPE_WEAPON" and loc ~= "INVTYPE_WEAPONMAINHAND" then return false end
+    local mh = GetInventoryItemLink("player", 16)
+    return mh and equipLoc(mh) == "INVTYPE_2HWEAPON" and not sameItem(mh, link) and true or false
+end
 local function plannerCompare(P, link)
+    if oneHandVsTwoHander(link) then
+        -- the planner weighs a one-hander alone against the two-hander; Codex
+        -- adds your best off hand, so the two are compared as wholes
+        local new = score(link)
+        if new and new > 0 then return compareHands(link, equipLoc(link), new) end
+    end
     local ok, d = pcall(P.ItemDetails, link)
     if not ok or type(d) ~= "table" or not d.equipLoc then return nil end
     local loc = d.equipLoc
@@ -296,7 +390,9 @@ end
 
 -- Returns the tooltip line, plus a debug line describing the comparison.
 local function upgradeLine(link)
-    if planner() then return nil end        -- Ruinous Forever Planner's tooltip lines cover it
+    -- Ruinous Forever Planner's tooltip lines cover it, except a one-hander
+    -- against your two-hander, which Codex weighs with your best off hand
+    if planner() and not oneHandVsTwoHander(link) then return nil end
     local pct, slot, dbg = compare(link)
     if pct == nil or pct == "same" then return nil, dbg end
     local slotName = type(slot) == "string" and slot or SLOT_NAMES[slot] or "that slot"
@@ -1777,6 +1873,12 @@ function M:OnEnable()
     end)
     self:AddTab("Codex", buildPage)
     self:RegisterEvent("CHAT_MSG_LOOT", onLoot)
+    -- the bank as last seen, for the best off hand you own
+    local bankOpen
+    self:RegisterEvent("BANKFRAME_OPENED", function() bankOpen = true; readBank() end)
+    self:RegisterEvent("BANKFRAME_CLOSED", function() if bankOpen then readBank() end; bankOpen = false end)
+    self:RegisterEvent("PLAYERBANKSLOTS_CHANGED", function() if bankOpen then readBank() end end)
+    self:RegisterEvent("BAG_UPDATE_DELAYED", function() if bankOpen then readBank() end end)
     R:Subscribe("Muster:EVENTS", function() refreshPage() end)
 
     -- Item names arrive from the server a moment after they're first asked for.

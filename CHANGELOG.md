@@ -8,6 +8,7 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## 0.6.1 — 2026-11-11
 
+- A one-hander against the two-hander you wield is weighed with your best off hand: the best-scoring shield (for classes that use them), held item, or off hand weapon (if you can wield two) in your bags or bank, and the pair is compared with the whole two-hander. The bank is remembered from the last time you opened it. With Ruinous Forever Planner running, Codex still shows its line for this case.
 - The upgrade line's Auto spec reads your talents first: the tree with the most points. WoW Forever's client answers "which specialization" with the class's first spec whatever your talents are, so a Shadow priest was weighed as Discipline. The client's answer is used only when no talent points are spent. The Weights button shows what Auto picked, e.g. "Auto (Shadow)".
 - The Journal's wording about where dungeon loot and quests come from now says "the quest database" everywhere, and tells you to install a quest database addon for a dungeon's full loot list.
 
