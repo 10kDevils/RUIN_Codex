@@ -152,36 +152,87 @@ function M.SpellMath(spellID, tooltip)
     }
 end
 
--- The spell a macro casts: from the tooltip itself, or from the action button
--- it belongs to (GetActionInfo gives the macro, GetMacroSpell its spell).
+-- The spell a macro casts. Newer clients answer GetActionInfo for a macro
+-- with ("macro", spellID, "spell") when the macro casts a spell, older ones
+-- with ("macro", macroIndex); GetMacroSpell(index) gives a macro's spell.
+-- Failing those, the spell named on the tooltip's first line.
+local function actionSpell(slot)
+    if type(slot) ~= "number" or not GetActionInfo then return nil end
+    local kind, id, sub = GetActionInfo(slot)
+    if kind == "spell" then return id end
+    if kind == "macro" then
+        if sub == "spell" and type(id) == "number" then return id end
+        if GetMacroSpell and type(id) == "number" then
+            local ok, sid = pcall(GetMacroSpell, id)
+            if ok and type(sid) == "number" then return sid end
+        end
+    end
+end
+local function spellByName(name)
+    if type(name) ~= "string" or name == "" then return nil end
+    local CS = rawget(_G, "C_Spell")
+    if CS and CS.GetSpellIDForSpellIdentifier then
+        local ok, sid = pcall(CS.GetSpellIDForSpellIdentifier, name)
+        if ok and type(sid) == "number" then return sid end
+    end
+    if CS and CS.GetSpellInfo then
+        local ok, info = pcall(CS.GetSpellInfo, name)
+        if ok and type(info) == "table" and type(info.spellID) == "number" then return info.spellID end
+    end
+end
 local function macroSpell(tooltip, data)
     if tooltip.GetSpell then
         local ok, _, sid = pcall(tooltip.GetSpell, tooltip)
         if ok and type(sid) == "number" then return sid end
     end
-    local macro
     local owner = tooltip.GetOwner and tooltip:GetOwner()
     local action = owner and (owner.action or (owner.GetAttribute and owner:GetAttribute("action")))
-    if type(action) == "number" and GetActionInfo then
-        local kind, id = GetActionInfo(action)
-        if kind == "macro" then macro = id elseif kind == "spell" then return id end
+    local sid = actionSpell(action)
+    if sid then return sid end
+    if type(data) == "table" and type(data.id) == "number" and GetMacroSpell then
+        local ok, m = pcall(GetMacroSpell, data.id)
+        if ok and type(m) == "number" then return m end
     end
-    if not macro and type(data) == "table" and type(data.id) == "number" then macro = data.id end
-    if macro and GetMacroSpell then
-        local ok, sid = pcall(GetMacroSpell, macro)
-        if ok and type(sid) == "number" then return sid end
+    -- the tooltip's first line is the spell's name
+    local line = type(data) == "table" and type(data.lines) == "table" and data.lines[1]
+    local name = line and line.leftText
+    if not name and tooltip.GetName and tooltip:GetName() then
+        local fs = _G[tooltip:GetName() .. "TextLeft1"]
+        name = fs and fs:GetText()
     end
+    if issecretvalue and issecretvalue(name) then return nil end
+    return spellByName(name)
 end
+M.MacroSpell = macroSpell
+
+local hasLine
+-- Is our line on this tooltip right now? (Another addon can clear or rebuild
+-- a tooltip after us; then the line is missing and goes back on.)
+local MARK = "[DH]PS|r$"
+hasLine = function(tooltip)
+    local name = tooltip.GetName and tooltip:GetName()
+    local n = tooltip.NumLines and tooltip:NumLines() or 0
+    if not name or type(n) ~= "number" then return false end
+    for i = 1, n do
+        local fs = _G[name .. "TextRight" .. i]
+        local t = fs and fs:GetText()
+        if type(t) == "string" and not (issecretvalue and issecretvalue(t)) and t:find(MARK) then return true end
+    end
+    return false
+end
+M.HasLine = function(t) return hasLine(t) end
 
 local function onSpellTooltip(tooltip, data, spellID)
     local sdb = M.db
     if sdb and sdb.spellMath == false then return end
     local id = spellID or (type(data) == "table" and data.id)
     if not id and tooltip.GetSpell then id = select(2, tooltip:GetSpell()) end
-    if not id or (issecretvalue and issecretvalue(id)) then return end
-    -- once per tooltip showing (a macro's tooltip can come through as both)
-    local stamp = tostring(GetTime and GetTime() or 0) .. ":" .. tostring(id) .. ":" .. tostring(tooltip.NumLines and tooltip:NumLines() or 0)
-    if tooltip.ruinSpellMath == stamp then return end
+    if not id or (issecretvalue and issecretvalue(id)) then
+        M.lastSpellMath = { miss = true }
+        return
+    end
+    -- once per tooltip showing: skip it if our line is already on it
+    if hasLine(tooltip) then return end
     local ok, m = pcall(M.SpellMath, id, tooltip)
     -- what happened last, for /codex spellmath
     M.lastSpellMath = { id = id, ok = ok, err = not ok and tostring(m) or nil, none = ok and not m or nil,
@@ -196,8 +247,13 @@ local function onSpellTooltip(tooltip, data, spellID)
     tooltip:AddDoubleLine(left, right)
     -- the tooltip grows to fit the new line (a macro's tooltip doesn't on its own)
     if tooltip.Show and tooltip.IsShown and tooltip:IsShown() then tooltip:Show() end
-    tooltip.ruinSpellMath = tostring(GetTime and GetTime() or 0) .. ":" .. tostring(id) .. ":" .. tostring(tooltip.NumLines and tooltip:NumLines() or 0)
+    tooltip.ruinSpellMath = right
     M.lastSpellMath.shown = true
+    M.lastSpellMath.tip = tooltip.GetName and tooltip:GetName() or "?"
+    local last = M.lastSpellMath
+    if C_Timer and C_Timer.After then
+        C_Timer.After(0.3, function() last.later = hasLine(tooltip) and "still there" or (tooltip:IsShown() and "gone" or "closed") end)
+    end
     return true
 end
 M.OnSpellTooltip = onSpellTooltip
@@ -228,10 +284,9 @@ local function hookTip(tip)
     if not (tip and hooksecurefunc) then return end
     if tip.SetAction then
         hooksecurefunc(tip, "SetAction", function(self, slot)
-            if not GetActionInfo then return end
-            local kind, id = GetActionInfo(slot)
-            if kind == "spell" then after(self, id)
-            elseif kind == "macro" and GetMacroSpell then after(self, (GetMacroSpell(id))) end
+            local ok, sid = pcall(actionSpell, slot)
+            if not (ok and sid) then ok, sid = pcall(macroSpell, self, nil) end
+            if ok and sid and not (issecretvalue and issecretvalue(sid)) then after(self, sid) end
         end)
     end
     if tip.SetSpellByID then hooksecurefunc(tip, "SetSpellByID", function(self, id) after(self, id) end) end
@@ -250,10 +305,43 @@ local function hookTip(tip)
 end
 hookTip(GameTooltip)
 
+-- Self-heal: while a spell (or a macro's spell) tooltip is up, put the line
+-- back if something took it off. Checked a few times a second, cheaply.
+local function shownSpell(tip)
+    if tip.GetPrimaryTooltipData and Enum and Enum.TooltipDataType then
+        local ok, d = pcall(tip.GetPrimaryTooltipData, tip)
+        if ok and type(d) == "table" then
+            if d.type == Enum.TooltipDataType.Spell then return d.id end
+            if d.type == Enum.TooltipDataType.Macro then return macroSpell(tip, d) end
+            return nil
+        end
+    end
+    if tip.GetSpell then
+        local ok, _, sid = pcall(tip.GetSpell, tip)
+        if ok and type(sid) == "number" then return sid end
+    end
+end
+local healWait = 0
+function M.HealTooltip(tip, elapsed)
+    healWait = healWait - (elapsed or 0)
+    if healWait > 0 then return end
+    healWait = 0.25
+    if not (tip and tip.IsShown and tip:IsShown()) or hasLine(tip) then return end
+    local ok, sid = pcall(shownSpell, tip)
+    if ok and type(sid) == "number" and not (issecretvalue and issecretvalue(sid)) then onSpellTooltip(tip, nil, sid) end
+end
+if GameTooltip and GameTooltip.HookScript then
+    GameTooltip:HookScript("OnUpdate", function(self, elapsed) M.HealTooltip(self, elapsed) end)
+end
+
 function M.SpellMathReport()
     local l = M.lastSpellMath
     if not l then return "No spell tooltip seen yet: hover a spell, then try again." end
-    if l.shown then return ("Last spell (%s): line shown."):format(tostring(l.id)) end
+    if l.miss then return "Last tooltip: couldn't tell which spell it was." end
+    if l.shown then
+        return ("Last spell (%s): line added to %s%s."):format(tostring(l.id), tostring(l.tip),
+            l.later and ("; a moment later it was " .. l.later) or "")
+    end
     if l.err then return ("Last spell (%s): error %s"):format(tostring(l.id), l.err) end
     return ("Last spell (%s): no damage or healing found in: %s"):format(tostring(l.id), tostring(l.text))
 end
