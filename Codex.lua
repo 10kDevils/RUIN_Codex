@@ -26,6 +26,9 @@ end
 local W = R.Widgets
 local C = W.COLORS
 
+-- What the player lets RUIN share about them (RUIN Core: Settings > Display)
+local function shares(kind) return not (R.Shares and not R:Shares(kind)) end
+
 local M = R:RegisterModule("Codex", { version = "0.6.1" })
 ns.Codex = M
 
@@ -667,7 +670,7 @@ local function report(inst, id, looter, q)
     if recent[key] and GetTime() - recent[key] < 15 then return end
     recent[key] = GetTime()
     recordDrop(inst, id)
-    M:Send("DROP", { i = inst, id = id }, "ORG", nil, R.PRIORITY.BULK)
+    if shares("loot") then M:Send("DROP", { i = inst, id = id }, "ORG", nil, R.PRIORITY.BULK) end
 end
 
 local function inGroupInstance()
@@ -701,9 +704,35 @@ local function onEncounterLoot(_, _, itemID, itemLink, _, playerName)
     report(GetInstanceInfo and GetInstanceInfo() or "Unknown", id, playerName, id and qualityOf(id, type(itemLink) == "string" and itemLink or ""))
 end
 
+-- What other players report is checked before it counts: the same report
+-- from the same player twice in a few seconds (a boss kill: two minutes) counts once, each player
+-- has a budget of reports every few minutes, and the catch-up totals another
+-- member sends can't make a count jump past twice ours (plus a little).
+local heard, budget = {}, {}
+local function fresh(sender, what, window)
+    local now = GetTime()
+    local key = tostring(sender) .. "\31" .. what
+    if heard[key] and now - heard[key] < (window or 15) then return false end
+    heard[key] = now
+    local b = budget[sender]
+    if not b or now - b.t > 300 then b = { t = now, n = 0 }; budget[sender] = b end
+    b.n = b.n + 1
+    if b.n > 60 then return false end
+    -- keep the tables small
+    local n = 0
+    for k, t in pairs(heard) do n = n + 1; if now - t > 300 then heard[k] = nil end end
+    return true
+end
+local function capped(ours, theirs)
+    ours = ours or 0
+    return math.min(theirs, math.max(ours * 2, ours + 25))
+end
+M.CappedCount = capped
+
 function M:OnDrop(d, sender)
     if type(d.i) ~= "string" or type(d.id) ~= "number" then return end
     if d.id < 1 or d.id > 10000000 or d.id ~= math.floor(d.id) or #d.i > 64 then return end
+    if not fresh(sender, "d" .. d.i .. d.id) then return end
     recordDrop(d.i, d.id)
 end
 
@@ -747,6 +776,7 @@ function M:OnDrops(d)
         local id, n = type(it) == "table" and tonumber(it[1]), type(it) == "table" and tonumber(it[2])
         if id and n and id >= 1 and id <= 10000000 and id == math.floor(id) and n >= 1 then
             local e = db.drops[d.i][id] or { n = 0 }
+            n = capped(e.n, n)
             if n > (e.n or 0) then e.n, e.t = math.min(n, 9999), e.t or GetServerTime(); changed = true end
             db.drops[d.i][id] = e
         end
@@ -818,13 +848,14 @@ local function onBossDown(name, guid)
     recentKill[k] = GetTime()
     if not iReportForGroup() then return end
     recordKill(inst, boss)
-    M:Send("KILL", { i = inst, b = boss }, "ORG", nil, R.PRIORITY.BULK)
+    if shares("loot") then M:Send("KILL", { i = inst, b = boss }, "ORG", nil, R.PRIORITY.BULK) end
 end
 
 local function okText(s, max) return type(s) == "string" and s ~= "" and #s <= (max or 64) and not (issecretvalue and issecretvalue(s)) end
 
-function M:OnKill(d)
+function M:OnKill(d, sender)
     if not okText(d.i) or not okText(d.b) then return end
+    if not fresh(sender, "k" .. d.i .. d.b, 120) then return end
     recordKill(d.i, d.b)
 end
 
@@ -857,6 +888,7 @@ end
 
 local function flushMobs()
     flushQueued = false
+    if not shares("loot") then pendingMobs = {}; return end
     for inst, p in pairs(pendingMobs) do
         local batch = {}
         for id, n in pairs(p.items) do
@@ -913,10 +945,11 @@ local function onLootOpened()
 end
 M.OnLootOpened = onLootOpened
 
-function M:OnMobs(d)
+function M:OnMobs(d, sender)
     if not okText(d.i) or type(d.l) ~= "table" then return end
     local n = tonumber(d.n) or 0
     if n < 0 or n > 500 or n ~= math.floor(n) then return end
+    if not fresh(sender, "m" .. d.i .. n .. #d.l) then return end
     local m = mobsOf(d.i)
     m.n = m.n + n
     for k, it in ipairs(d.l) do
@@ -939,6 +972,7 @@ function M:OnTally(d)
         for k, it in ipairs(d.k) do
             if k > 40 then break end
             local b, n = type(it) == "table" and it[1], type(it) == "table" and tonumber(it[2])
+            if okText(b) and n and n >= 1 and n == math.floor(n) then n = capped(db.kills[d.i][b], n) end
             if okText(b) and n and n >= 1 and n == math.floor(n) and n > (db.kills[d.i][b] or 0) then
                 db.kills[d.i][b] = math.min(n, 99999); changed = true
             end
@@ -947,10 +981,12 @@ function M:OnTally(d)
     local mn = tonumber(d.m)
     if mn or type(d.l) == "table" then
         local m = mobsOf(d.i)
+        if mn and mn == math.floor(mn) then mn = capped(m.n, mn) end
         if mn and mn == math.floor(mn) and mn > m.n then m.n = math.min(mn, 9999999); changed = true end
         for k, it in ipairs(type(d.l) == "table" and d.l or {}) do
             if k > 40 then break end
             local id, n = type(it) == "table" and tonumber(it[1]), type(it) == "table" and tonumber(it[2])
+            if id and n and id >= 1 and id <= 10000000 and id == math.floor(id) and n >= 1 then n = capped(m.items[id], n) end
             if id and n and id >= 1 and id <= 10000000 and id == math.floor(id) and n >= 1 and n > (m.items[id] or 0) then
                 m.items[id] = math.min(n, 9999999); changed = true
             end
