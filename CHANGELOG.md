@@ -9,6 +9,7 @@ Versioning: the third number counts the meaningful changes made since the second
 ## 0.7.1 — 2026-11-13
 
 - **Quest route is greyed out for dungeons with no known quests** (WoW Forever's newest, like Krol'dok Stronghold), with a tip saying so, instead of answering with an error in chat.
+- **Tooltips are compact and sit beside what you point at**: long lines break onto several short ones, and the tooltip opens to the side of the button with more room.
 
 ## 0.7.0 — 2026-11-12
 
