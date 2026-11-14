@@ -29,7 +29,7 @@ local C = W.COLORS
 -- What the player lets RUIN share about them (RUIN Core: Settings > Display)
 local function shares(kind) return not (R.Shares and not R:Shares(kind)) end
 
-local M = R:RegisterModule("Codex", { version = "0.7.0" })
+local M = R:RegisterModule("Codex", { version = "0.7.1" })
 ns.Codex = M
 
 local DEFAULTS = { drops = {}, kills = {}, mobs = {}, collapsed = {}, tooltip = true, spec = "Auto", installed = {} }
@@ -1909,7 +1909,14 @@ local function refreshJournal()
     local mu = R:GetModule("Muster")
     ui.runPost:SetEnabled(mu ~= nil)
     local PF = R:GetModule("Pathfinder")
-    ui.questRoute:SetEnabled(PF ~= nil and PF.OpenDungeonRoute ~= nil and entry ~= nil and PF:DungeonEntry(entry.name) ~= nil)
+    -- a route only where the quest database knows quests for this character
+    -- (WoW Forever's newest dungeons have none published yet)
+    local canRoute = PF ~= nil and PF.OpenDungeonRoute ~= nil and entry ~= nil and PF:DungeonEntry(entry.name) ~= nil
+    local qlist = canRoute and PF.DungeonQuests and PF:DungeonQuests(entry.name)
+    if canRoute and type(qlist) == "table" and #qlist == 0 then canRoute = false end
+    ui.questRoute:SetEnabled(canRoute)
+    ui.questRoute.tip = canRoute and "Open a RUIN Pathfinder route through every quest of this dungeon for your character, with the quests that unlock them."
+        or (entry and PF and ("No quests are known for " .. entry.name .. " yet, so there's no quest route.") or "Needs RUIN Pathfinder.")
     local runs = {}
     if mu and mu.GetUpcoming and entry then
         for _, ev in ipairs(mu:GetUpcoming()) do

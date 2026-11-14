@@ -6,6 +6,10 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
+## 0.7.1 — 2026-11-13
+
+- **Quest route is greyed out for dungeons with no known quests** (WoW Forever's newest, like Krol'dok Stronghold), with a tip saying so, instead of answering with an error in chat.
+
 ## 0.7.0 — 2026-11-12
 
 - **A new look, with the rest of the suite.** Codex's pages take its violet through and through: the open tab's underline, check marks, the bar on a row under the mouse and the edge a button gets when you point at it. Its header carries a drawing of an arcane circle beside a page of script, the points of its star glowing in turn, and Codex has its own icon (an open book) on its tab, its header and in the AddOns list.
