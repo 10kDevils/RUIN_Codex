@@ -32,7 +32,8 @@ local function shares(kind) return not (R.Shares and not R:Shares(kind)) end
 local M = R:RegisterModule("Codex", { version = "0.7.1" })
 ns.Codex = M
 
-local DEFAULTS = { drops = {}, kills = {}, mobs = {}, collapsed = {}, tooltip = true, spec = "Auto", installed = {} }
+local DEFAULTS = { drops = {}, kills = {}, mobs = {}, collapsed = {}, tooltip = true, spec = "Auto", installed = {},
+                   lootFilter = "All loot", dungeonSort = "Level" }
 local CLASSES = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "WARLOCK", "DRUID" }
 
 -- "WARRIOR" -> "Warrior" (the game's own name when it has one).
@@ -1172,6 +1173,18 @@ local function allEntries()
     return out
 end
 
+-- A wing (Scarlet Monastery's Graveyard...) is its own entry; the quest
+-- database, Pathfinder and the game's instance name may know only the whole
+-- place (its group).
+local function dataName(dg) return dg.group or dg.name end
+M.DataName = dataName
+local function siblingsOf(dg)
+    local out = {}
+    if not dg.group then return out end
+    for _, o in ipairs(ns.Dungeons or {}) do if o ~= dg and o.group == dg.group then out[#out + 1] = o end end
+    return out
+end
+
 local function stampOf(src, nNpc, nItem)
     local ver = ""
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or rawget(_G, "GetAddOnMetadata")
@@ -1181,7 +1194,7 @@ local function stampOf(src, nNpc, nItem)
     end
     local areas = {}
     for _, dg in ipairs(allEntries()) do for _, a in ipairs(dg.areas or {}) do areas[#areas + 1] = a end end
-    return ("%s:%s:%d:%d:%d:2"):format(src.name, ver, nNpc, nItem, #areas)
+    return ("%s:%s:%d:%d:%d:3"):format(src.name, ver, nNpc, nItem, #areas)
 end
 
 local function safe(f, id, field)
@@ -1192,7 +1205,7 @@ end
 -- Build the lists in a coroutine, a few hundred records per frame.
 local function build(src)
     local areaOf = {}
-    for _, dg in ipairs(allEntries()) do for _, a in ipairs(dg.areas or {}) do areaOf[a] = dg.name end end
+    for _, dg in ipairs(allEntries()) do for _, a in ipairs(dg.areas or {}) do areaOf[a] = dataName(dg) end end
     local npcs, items = src.npcs(), src.items()
     local stamp = stampOf(src, #npcs, #items)
     if db.qloot and db.qloot.stamp == stamp then return db.qloot end
@@ -1272,10 +1285,16 @@ local function lootKey(s) return (tostring(s or ""):lower():gsub("[^%w]", "")) e
 -- One dungeon's drops, in Loot.For's shape (see Loot.lua), or nil.
 function QL.For(entry)
     if QL.state ~= "ready" or type(db.qloot) ~= "table" or type(entry) ~= "table" then return nil end
-    local e = db.qloot.d and db.qloot.d[entry.name]
+    local e = db.qloot.d and (db.qloot.d[entry.name] or db.qloot.d[dataName(entry)])
     if not e then return nil end
     local bossKeys = {}
     for _, b in ipairs(entry.bosses or {}) do bossKeys[lootKey(b[1])] = b[1] end
+    -- a wing: the other wings' bosses (and bosses no wing lists) aren't its own
+    local wing = entry.group ~= nil
+    local otherKeys = {}
+    for _, o in ipairs(siblingsOf(entry)) do
+        for _, b in ipairs(o.bosses or {}) do otherKeys[lootKey(b[1])] = true end
+    end
     -- an elite with gear only it drops (two pieces or more) is a boss the journal doesn't list yet
     local ownGear = {}
     if not entry.size then
@@ -1292,7 +1311,9 @@ function QL.For(entry)
         for bk, bn in pairs(bossKeys) do
             if #k >= 5 and #bk >= 5 and (bk:find(k, 1, true) or k:find(bk, 1, true)) then return bn, false end
         end
+        if otherKeys[k] then return nil, nil, true end
         local rank = info[2]
+        if wing and (rank >= 2 or (rank >= 1 and (ownGear[npc] or 0) >= 2)) then return nil, nil, true end
         if rank == 2 or rank == 4 then return name, true end      -- rare elite, rare
         if rank == 3 or (rank >= 1 and (ownGear[npc] or 0) >= 2) then return name, false end
         return nil
@@ -1305,7 +1326,8 @@ function QL.For(entry)
         local onBoss = false
         if total <= BOSS_WORLD_DROP then
             for _, n in ipairs(droppers) do
-                local boss, rare = bossOf(n)
+                local boss, rare, elsewhere = bossOf(n)
+                if elsewhere then onBoss = true end
                 if boss then
                     local i = secIndex[boss]
                     if not i then
@@ -1382,7 +1404,7 @@ M.QuestRewards = questRewards
 local function questLines(lines, dg)
     local PF = R:GetModule("Pathfinder")
     local list, why
-    if PF and PF.DungeonQuests then list, why = PF:DungeonQuests(dg.name) end
+    if PF and PF.DungeonQuests then list, why = PF:DungeonQuests(dataName(dg)) end
     if not list then
         lines[#lines + 1] = { C.gold .. "Quests|r", header = "quests", title = "Quests" }
         for _, t in ipairs(dg.quests or {}) do lines[#lines + 1] = { "    " .. C.dim .. "-|r " .. t } end
@@ -1402,7 +1424,7 @@ local function questLines(lines, dg)
         return
     end
     lines[#lines + 1] = { "    " .. (W.AddonHex and W.AddonHex("Pathfinder") or C.good) .. "> Open the quest route in Pathfinder|r  " .. C.dim .. "every quest here and the ones that unlock them, in order|r",
-        action = function() PF:OpenDungeonRoute(dg.name) end,
+        action = function() PF:OpenDungeonRoute(dataName(dg)) end,
         tip = { "Quest route", "Starts a Pathfinder route through every quest above: the quests that unlock them first, then the pick-ups, the run and the hand-ins." } }
     local function qname(id)
         local i = PF.QuestInfo and PF:QuestInfo(id)
@@ -1433,8 +1455,9 @@ local function questLines(lines, dg)
         if rewards then
             for _, rw in ipairs(rewards) do
                 local id = rw.id
-                lines[#lines + 1] = { "        " .. C.dim .. "Reward:|r " .. itemText(id, rw.name), link = linkFor(id),
-                    hit = "        " .. C.dim .. "Reward:|r " .. itemText(id, rw.name) }
+                local up = (M.IsUpgradeFor and M.IsUpgradeFor(id)) and (M.UP_ARROW .. " ") or ""
+                lines[#lines + 1] = { "        " .. C.dim .. "Reward:|r " .. up .. itemText(id, rw.name), link = linkFor(id),
+                    hit = "        " .. C.dim .. "Reward:|r " .. up .. itemText(id, rw.name) }
             end
         end
     end
@@ -1450,11 +1473,153 @@ local function slotText(id)
     return slot
 end
 
+---------------------------------------------------------------------------
+-- Loot filter, what your class can use, and the upgrade arrow
+---------------------------------------------------------------------------
+local LOOT_FILTERS = { "All loot", "Upgrades for me", "Usable by me", "Cloth", "Leather", "Mail", "Plate", "Shields",
+    "Off-hands", "Cloaks", "Jewelry", "One-Hand", "Two-Hand", "Ranged", "Daggers", "Swords", "Axes", "Maces",
+    "Fist Weapons", "Polearms", "Staves", "Bows", "Guns", "Crossbows", "Wands", "Thrown" }
+M.LOOT_FILTERS = LOOT_FILTERS
+local ARMOR_SUB = { [1] = "Cloth", [2] = "Leather", [3] = "Mail", [4] = "Plate", [6] = "Shields" }
+local WEAPON_SUB = { [0] = "Axes", [1] = "Axes", [2] = "Bows", [3] = "Guns", [4] = "Maces", [5] = "Maces", [6] = "Polearms",
+    [7] = "Swords", [8] = "Swords", [10] = "Staves", [13] = "Fist Weapons", [15] = "Daggers", [16] = "Thrown",
+    [18] = "Crossbows", [19] = "Wands" }
+local TWO_HAND_SUB = { [1] = true, [5] = true, [6] = true, [8] = true, [10] = true }
+local RANGED_SUB = { [2] = true, [3] = true, [16] = true, [18] = true, [19] = true }
+local JEWELRY = { INVTYPE_NECK = true, INVTYPE_FINGER = true, INVTYPE_TRINKET = true }
+-- from a loot list's own words, while the game hasn't sent the item
+local INFO_WORDS = { { "Cloth", "Cloth" }, { "Leather", "Leather" }, { "Mail", "Mail" }, { "Plate", "Plate" },
+    { "Shield", "Shields" }, { "Off%-hand", "Off-hands" }, { "Held In Off%-hand", "Off-hands" }, { "Back", "Cloaks" }, { "Cloak", "Cloaks" },
+    { "Neck", "Jewelry" }, { "Finger", "Jewelry" }, { "Ring", "Jewelry" }, { "Trinket", "Jewelry" },
+    { "Dagger", "Daggers" }, { "Sword", "Swords" }, { "Axe", "Axes" }, { "Mace", "Maces" }, { "Fist", "Fist Weapons" },
+    { "Polearm", "Polearms" }, { "Sta[fv]", "Staves" }, { "Bow", "Bows" }, { "Gun", "Guns" }, { "Crossbow", "Crossbows" },
+    { "Wand", "Wands" }, { "Thrown", "Thrown" }, { "Two%-Hand", "Two-Hand" }, { "One%-Hand", "One-Hand" }, { "Ranged", "Ranged" } }
+
+local function itemFacts(id)
+    if not id or not GetItemInfo then return nil end
+    local name, _, _, _, _, _, _, _, loc, _, _, classID, subID = GetItemInfo(id)
+    if not name then return nil end
+    return tonumber(classID), tonumber(subID), loc
+end
+
+-- The kinds an item is ("Leather", "Two-Hand", "Staves"...), or nil when unknown.
+local function itemKinds(id, info)
+    local classID, subID, loc = itemFacts(id)
+    local k = {}
+    if classID == 4 then
+        if loc == "INVTYPE_CLOAK" then k.Cloaks = true
+        elseif JEWELRY[loc] then k.Jewelry = true
+        elseif loc == "INVTYPE_HOLDABLE" then k["Off-hands"] = true
+        elseif ARMOR_SUB[subID] then k[ARMOR_SUB[subID]] = true end
+        return k
+    elseif classID == 2 then
+        if WEAPON_SUB[subID] then k[WEAPON_SUB[subID]] = true end
+        if loc == "INVTYPE_2HWEAPON" or TWO_HAND_SUB[subID] then k["Two-Hand"] = true
+        elseif RANGED_SUB[subID] or loc == "INVTYPE_RANGED" or loc == "INVTYPE_RANGEDRIGHT" or loc == "INVTYPE_THROWN" then k.Ranged = true
+        else k["One-Hand"] = true end
+        return k
+    elseif classID then
+        return k
+    end
+    if type(info) ~= "string" or info == "" then return nil end
+    for _, w in ipairs(INFO_WORDS) do if info:find(w[1]) then k[w[2]] = true end end
+    if k.Staves or k.Polearms then k["Two-Hand"] = true end
+    if (k.Bows or k.Guns or k.Crossbows or k.Wands or k.Thrown) then k.Ranged = true end
+    if (k.Daggers or k.Swords or k.Axes or k.Maces or k["Fist Weapons"]) and not k["Two-Hand"] then k["One-Hand"] = true end
+    return k
+end
+M.ItemKinds = itemKinds
+
+-- What your class can wear and wield (WoW's trainable proficiencies; mail
+-- and plate come at level 40).
+local ARMOR_MAX = { WARRIOR = 4, PALADIN = 4, HUNTER = 3, SHAMAN = 3, ROGUE = 2, DRUID = 2, PRIEST = 1, MAGE = 1, WARLOCK = 1 }
+local ARMOR_BEFORE_40 = { WARRIOR = 3, PALADIN = 3, HUNTER = 2, SHAMAN = 2 }
+local SHIELDS = { WARRIOR = true, PALADIN = true, SHAMAN = true }
+local RELIC = { [7] = "PALADIN", [8] = "DRUID", [9] = "SHAMAN" }
+local WEAPONS = {
+    WARRIOR = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 13, 15, 16, 18 }, PALADIN = { 0, 1, 4, 5, 6, 7, 8 },
+    HUNTER = { 0, 1, 2, 3, 6, 7, 8, 10, 13, 15, 16, 18 }, ROGUE = { 2, 3, 4, 7, 13, 15, 16, 18 },
+    PRIEST = { 4, 10, 15, 19 }, SHAMAN = { 0, 1, 4, 5, 10, 13, 15 }, MAGE = { 7, 10, 15, 19 },
+    WARLOCK = { 7, 10, 15, 19 }, DRUID = { 4, 5, 10, 13, 15 },
+}
+local function canUse(id)
+    local classID, subID, loc = itemFacts(id)
+    local cls = myClass()
+    if not classID or not cls then return nil end
+    if classID == 4 then
+        if loc == "INVTYPE_CLOAK" or JEWELRY[loc] or loc == "INVTYPE_HOLDABLE" or loc == "INVTYPE_TABARD"
+            or loc == "INVTYPE_BODY" or subID == 0 then return true end
+        if subID and subID >= 1 and subID <= 4 then
+            local max = ARMOR_MAX[cls] or 1
+            if (UnitLevel and (UnitLevel("player") or 60) < 40) and ARMOR_BEFORE_40[cls] then max = ARMOR_BEFORE_40[cls] end
+            return subID <= max
+        end
+        if subID == 6 then return SHIELDS[cls] == true end
+        if RELIC[subID] then return RELIC[subID] == cls end
+        return true
+    elseif classID == 2 then
+        for _, w in ipairs(WEAPONS[cls] or {}) do if w == subID then return true end end
+        return false
+    end
+    return false
+end
+M.CanUse = canUse
+
+-- Upgrade verdicts (Planner's when it's installed, else Codex's weights),
+-- remembered until your gear or spec changes.
+local upgradeCache = {}
+local function isUpgradeFor(id)
+    if not id then return false end
+    local v = upgradeCache[id]
+    if v ~= nil then return v end
+    if canUse(id) ~= true then
+        if itemFacts(id) then upgradeCache[id] = false end
+        return false
+    end
+    local ok, up = pcall(M.IsUpgrade, M, "item:" .. id)
+    if not ok or up == nil then return false end
+    upgradeCache[id] = up == true
+    return up == true
+end
+M.IsUpgradeFor = isUpgradeFor
+function M.ForgetUpgrades() upgradeCache = {} end
+
+local UP_ARROW = "|A:bags-greenarrow:14:14|a"
+local BOSS_ICON = "|TInterface\\TargetingFrame\\UI-TargetingFrame-Skull:14:14|t"
+M.UP_ARROW = UP_ARROW
+local function arrowFor(id) return isUpgradeFor(id) and (UP_ARROW .. " ") or "" end
+
+-- Does an item pass the Journal's loot filter?
+local function passesFilter(id, info)
+    local f = db.lootFilter or "All loot"
+    if f == "All loot" then return true end
+    if f == "Upgrades for me" then return isUpgradeFor(id) end
+    if f == "Usable by me" then return canUse(id) == true end
+    local k = itemKinds(id, info)
+    return k ~= nil and k[f] == true
+end
+M.PassesFilter = passesFilter
+
 local function journalLines(dg, isRaid)
     QL.Start()
     local loot = ns.Loot and ns.Loot.For(dg)
     local fromData = loot and loot.source == "database"
-    local seen = db.drops[dg.name]
+    -- what RUIN recorded under this entry's name and (for a wing) the whole place's
+    local function merge(t)
+        local a, b = t[dg.name], dg.group and t[dg.group] or nil
+        if not b then return a end
+        if not a then return b end
+        local out = {}
+        for k, v in pairs(b) do out[k] = v end
+        for k, v in pairs(a) do
+            if type(v) == "table" and type(out[k]) == "table" then out[k] = { n = (v.n or 0) + (out[k].n or 0) }
+            elseif type(v) == "number" then out[k] = v + (tonumber(out[k]) or 0)
+            else out[k] = v end
+        end
+        return out
+    end
+    local seen = merge(db.drops)
+    local filterOn = (db.lootFilter or "All loot") ~= "All loot"
     -- drops RUIN looted, by name, so a listed name without an ID can show the real item
     local seenByName = {}
     for id in pairs(seen or {}) do
@@ -1474,6 +1639,14 @@ local function journalLines(dg, isRaid)
     end
     lines[#lines + 1] = { C.gold .. dg.name .. "|r" }
     lines[#lines + 1] = { C.dim .. (isRaid and (dg.size .. " players") or ("Levels " .. dg.levels)) .. "  ·  " .. dg.where .. "|r" }
+    if dg.group then
+        local parts = { dg }
+        for _, o in ipairs(siblingsOf(dg)) do parts[#parts + 1] = o end
+        table.sort(parts, function(a, b) return (tonumber((a.levels or ""):match("%d+")) or 0) < (tonumber((b.levels or ""):match("%d+")) or 0) end)
+        local names = {}
+        for _, o in ipairs(parts) do names[#names + 1] = (o == dg and (C.white .. o.wing .. "|r") or (C.dim .. o.wing .. "|r")) end
+        lines[#lines + 1] = { C.dim .. "One of " .. dg.group .. "'s " .. #parts .. " wings:|r " .. table.concat(names, C.dim .. "  ·  |r") }
+    end
     -- what's known about the place
     local aboutOpen = false
     local function section(title, list)
@@ -1513,7 +1686,7 @@ local function journalLines(dg, isRaid)
         for _, b in ipairs(dg.bosses) do bosses[#bosses + 1] = { name = b[1], tip = b[2], items = {} } end
     end
     if #bosses == 0 then lines[#lines + 1] = { "    " .. C.dim .. "No boss list published yet.|r" } end
-    local kills = db.kills[dg.name] or {}
+    local kills = merge(db.kills) or {}
     local function killsOf(boss)
         local k = bossKey(boss)
         for b, n in pairs(kills) do if bossKey(b) == k then return n end end
@@ -1521,40 +1694,64 @@ local function journalLines(dg, isRaid)
     end
     local function itemLine(it, k)
         local id = it.id or (it.name and (seenByName[it.name:lower()] or idByName(it.name)))
-        local text = id and itemText(id, it.name) or (C.white .. it.name .. "|r")
+        if filterOn and not passesFilter(id, it.info) then return nil end
+        local text = arrowFor(id) .. (id and itemText(id, it.name) or (C.white .. it.name .. "|r"))
         local slot = it.info or (id and slotText(id)) or (it.quest and "quest item") or nil
         local info = slot and ("  " .. C.dim .. "(" .. slot .. ")|r") or ""
         local track = (k and k > 0) and trackText(seen, id, k) or (chanceText(it) .. (id and seenText(seen, id) or ""))
         return { "    " .. C.dim .. "-|r " .. text .. info .. track, link = linkFor(id), name = it.name, info = it.info,
                  hit = "    " .. C.dim .. "-|r " .. text }
     end
-    for _, b in ipairs(bosses) do
+    for bi, b in ipairs(bosses) do
         local k = killsOf(b.name)
-        lines[#lines + 1] = { C.white .. b.name .. "|r" .. (k > 0 and ("  " .. C.good .. "killed " .. k .. "x by RUIN|r") or "")
-            .. (b.tip and ("  " .. C.dim .. b.tip .. "|r") or "") }
-        for _, it in ipairs(b.items) do lines[#lines + 1] = itemLine(it, k) end
+        local shown = {}
+        for _, it in ipairs(b.items) do
+            local l = itemLine(it, k)
+            if l then shown[#shown + 1] = l end
+        end
+        local rare = b.tip and b.tip:find("^Rare") ~= nil
+        local count = #b.items > 0 and (filterOn and ("%d of %d"):format(#shown, #b.items) or (#b.items .. " drop" .. (#b.items == 1 and "" or "s"))) or nil
+        lines[#lines + 1] = { BOSS_ICON .. " " .. C.white .. b.name .. "|r"
+            .. (rare and "  |cffc0c0d8Rare|r" or "")
+            .. (count and ("  " .. C.dim .. count .. "|r") or "")
+            .. (k > 0 and ("  " .. C.good .. "killed " .. k .. "x by RUIN|r") or ""), boss = bi }
+        local tip = b.tip and b.tip:gsub("^Rare[%.:]?%s*", "") or nil
+        if tip and tip ~= "" then lines[#lines + 1] = { "    " .. C.dim .. tip .. "|r", bossTip = true } end
+        for _, l in ipairs(shown) do lines[#lines + 1] = l end
         if loot and #b.items == 0 then
             lines[#lines + 1] = { "    " .. C.dim .. (fromData and "- nothing listed for it in " .. (QL.Source() or "quest database") .. " (for a group of bosses, see each one below)|r"
                 or "- no list for this boss yet|r") }
+        elseif filterOn and #shown == 0 then
+            lines[#lines + 1] = { "    " .. C.dim .. "- nothing here matches " .. db.lootFilter .. "|r" }
         end
     end
     if loot and loot.trash and #loot.trash > 0 then
-        lines[#lines + 1] = { C.gold .. (fromData and "Trash|r  " .. C.dim .. "drops from the dungeon's other mobs|r" or "Other drops inside|r"),
-            header = "trash", title = fromData and "Trash" or "Other drops inside", sub = fromData and "drops from the dungeon's other mobs" or nil }
-        for _, it in ipairs(loot.trash) do lines[#lines + 1] = itemLine(it) end
+        local tsub = dg.group and ("drops from mobs anywhere in " .. dg.group) or "drops from the dungeon's other mobs"
+        lines[#lines + 1] = { C.gold .. (fromData and "Trash|r  " .. C.dim .. tsub .. "|r" or "Other drops inside|r"),
+            header = "trash", title = fromData and "Trash" or "Other drops inside", sub = fromData and tsub or nil }
+        for _, it in ipairs(loot.trash) do
+            local l = itemLine(it)
+            if l then lines[#lines + 1] = l end
+        end
     end
     local listed, listedNames = {}, {}
     if ns.Loot then listed, listedNames = ns.Loot.Listed(dg) end
+    -- a wing: what the other wings list isn't this one's
+    for _, o in ipairs(ns.Loot and siblingsOf(dg) or {}) do
+        local l2, n2 = ns.Loot.Listed(o)
+        for k2, v in pairs(l2 or {}) do listed[k2] = listed[k2] or v end
+        for k2, v in pairs(n2 or {}) do listedNames[k2] = listedNames[k2] or v end
+    end
     local function isListed(id)
         local name = itemInfo(id)
         return listed[id] or (name and listedNames[name:lower()])
     end
     -- General: greens and blues from the dungeon's mobs, counted in the loot
     -- windows RUIN members opened, with a chance per mob looted
-    local mobs = db.mobs[dg.name]
+    local mobs = db.mobs[dg.name] or (dg.group and db.mobs[dg.group])
     local general = {}
     for id, n in pairs(mobs and mobs.items or {}) do
-        if not isListed(id) then general[#general + 1] = { id = id, n = n } end
+        if not isListed(id) and (not filterOn or passesFilter(id)) then general[#general + 1] = { id = id, n = n } end
     end
     table.sort(general, function(a, b) if a.n ~= b.n then return a.n > b.n end return a.id < b.id end)
     local looted = mobs and mobs.n or 0
@@ -1565,7 +1762,7 @@ local function journalLines(dg, isRaid)
             lines[#lines + 1] = { "    " .. C.dim .. ("and %d more"):format(#general - 60) .. "|r" }
             break
         end
-        lines[#lines + 1] = { hit = "    " .. C.dim .. "-|r " .. itemText(g.id), "    " .. C.dim .. "-|r " .. itemText(g.id) .. "  " .. C.dim .. ("x%d"):format(g.n)
+        lines[#lines + 1] = { hit = "    " .. C.dim .. "-|r " .. arrowFor(g.id) .. itemText(g.id), "    " .. C.dim .. "-|r " .. arrowFor(g.id) .. itemText(g.id) .. "  " .. C.dim .. ("x%d"):format(g.n)
             .. (looted > 0 and (" · about " .. pctText(math.min(g.n, looted), looted) .. " per mob") or "") .. "|r", link = linkFor(g.id) }
     end
     if #general == 0 then
@@ -1576,13 +1773,13 @@ local function journalLines(dg, isRaid)
     for _, g in ipairs(general) do inGeneral[g.id] = true end
     local extra = {}
     for id in pairs(seen or {}) do
-        if not isListed(id) and not inGeneral[id] then extra[#extra + 1] = id end
+        if not isListed(id) and not inGeneral[id] and (not filterOn or passesFilter(id)) then extra[#extra + 1] = id end
     end
     table.sort(extra, function(a, b) return (seen[a].n or 0) > (seen[b].n or 0) end)
     local alsoTitle = loot and "Also looted by RUIN members" or "Looted by RUIN members"
     lines[#lines + 1] = { C.gold .. alsoTitle .. "|r", header = "also", title = alsoTitle }
     for _, id in ipairs(extra) do
-        lines[#lines + 1] = { itemText(id) .. C.dim .. "  x" .. (seen[id].n or 1) .. "|r", link = linkFor(id), hit = itemText(id) }
+        lines[#lines + 1] = { arrowFor(id) .. itemText(id) .. C.dim .. "  x" .. (seen[id].n or 1) .. "|r", link = linkFor(id), hit = arrowFor(id) .. itemText(id) }
     end
     if #extra == 0 then
         lines[#lines + 1] = { C.dim .. (loot and "Nothing beyond the list yet." or "Nothing yet. Drops appear here as RUIN members loot them.") .. "|r" }
@@ -1751,13 +1948,30 @@ local function detailList(parent)
                 row.bandEdge:SetShown(line.header ~= nil)
                 row.bandLine:SetShown(line.header ~= nil)
             end
+            -- a boss: a faint band of its own, so each boss and its drops read as one block
+            if line.boss and not row.bossBand then
+                local c = W.SchemeOf(row).accent
+                row.bossBand = row:CreateTexture(nil, "BACKGROUND")
+                row.bossBand:SetAllPoints()
+                row.bossBand:SetColorTexture(c[1], c[2], c[3], 0.07)
+                row.bossEdge = row:CreateTexture(nil, "ARTWORK")
+                row.bossEdge:SetPoint("TOPLEFT", 0, 0)
+                row.bossEdge:SetPoint("BOTTOMLEFT", 0, 0)
+                row.bossEdge:SetWidth(2)
+                row.bossEdge:SetColorTexture(c[1], c[2], c[3], 0.55)
+            end
+            if row.bossBand then
+                row.bossBand:SetShown(line.boss ~= nil)
+                row.bossEdge:SetShown(line.boss ~= nil)
+            end
             if line.header and i > 1 then y = y + 10 end            -- room above each section
+            if line.boss and line.boss > 1 then y = y + 8 end       -- and between bosses
             row:ClearAllPoints()
             row:SetPoint("TOPLEFT", child, "TOPLEFT", 0, -y)
             row:SetPoint("RIGHT", child, "RIGHT", 0, 0)
             row.text:SetWidth(width - 14)
             row.text:ClearAllPoints()
-            row.text:SetPoint("TOPLEFT", line.header and 8 or 4, line.header and -4 or 0)
+            row.text:SetPoint("TOPLEFT", line.header and 8 or (line.boss and 8) or 4, line.header and -4 or (line.boss and -3) or 0)
             row.text:SetText(line[1])
             row.link = line.link
             row.itemName, row.itemInfo = not line.link and line.name or nil, line.info
@@ -1765,6 +1979,7 @@ local function detailList(parent)
             local blank = line[1] == " "
             local h = blank and 6 or math.max(14, row.text:GetStringHeight() or 14)
             if line.header then h = math.max(24, h + 8) end
+            if line.boss then h = math.max(20, h + 6) end
             -- only rows with something to show or do take the mouse, and only over their text
             local interactive = line.header or line.link or line.name or line.quest or line.action or line.tip
             row:EnableMouse(interactive and true or false)
@@ -1799,6 +2014,45 @@ local function journalEntries()
     return ns.Dungeons or {}, ui.selected or 1
 end
 
+-- The list on the left: dungeons by level (or A-Z); raids by size (10, 20,
+-- 40 players) under a header for each, in tier order (or A-Z) within it.
+local function lowLevel(e) return tonumber((e.levels or ""):match("^(%d+)")) or 0 end
+local function highLevel(e) return tonumber((e.levels or ""):match("(%d+)%s*$")) or 0 end
+local function sortName(e) return (tostring(e.name):gsub("^The ", "")) end
+local function sortedEntries()
+    local raids = ui.jmode == "Raids"
+    local src = raids and (ns.Raids or {}) or (ns.Dungeons or {})
+    local items = {}
+    for i, e in ipairs(src) do items[#items + 1] = { e = e, i = i } end
+    local az = db.dungeonSort == "A-Z"
+    table.sort(items, function(a, b)
+        if raids then
+            local sa, sb = a.e.size or 40, b.e.size or 40
+            if sa ~= sb then return sa < sb end
+        end
+        if az then
+            local na, nb = sortName(a.e), sortName(b.e)
+            if na ~= nb then return na < nb end
+            return a.i < b.i
+        end
+        if not raids then
+            if lowLevel(a.e) ~= lowLevel(b.e) then return lowLevel(a.e) < lowLevel(b.e) end
+            if highLevel(a.e) ~= highLevel(b.e) then return highLevel(a.e) < highLevel(b.e) end
+        end
+        return a.i < b.i
+    end)
+    local out, lastSize = {}, nil
+    for _, it in ipairs(items) do
+        if raids and it.e.size ~= lastSize then
+            lastSize = it.e.size
+            out[#out + 1] = { header = (it.e.size or 40) .. "-player raids" }
+        end
+        out[#out + 1] = it
+    end
+    return out
+end
+M.SortedEntries = sortedEntries
+
 local function buildJournal(page)
     ui.jmode = ui.jmode or "Dungeons"
     ui.modeBtns = {}
@@ -1811,7 +2065,7 @@ local function buildJournal(page)
     ui.tipCheck = W.Check(page, "Tooltip upgrade line", function() return db.tooltip end, function(v) db.tooltip = v end)
     ui.tipCheck.tip = "Item tooltips say how an item compares with what you wear, weighed for your spec (spell power and other Equip: lines count)."
     ui.tipCheck:SetPoint("BOTTOMLEFT", 0, 2)
-    ui.specCycle = W.Cycle(page, 172, specOptions(), function() return db.spec end, function(v) db.spec = v end, "Weights: ")
+    ui.specCycle = W.Cycle(page, 172, specOptions(), function() return db.spec end, function(v) db.spec = v; M.ForgetUpgrades(); refreshPage() end, "Weights: ")
     ui.specCycle.format = function(v) return v == "Auto" and ("Auto (" .. tostring(mySpec()) .. ")") or v end
     ui.specCycle.tipTitle = "Which spec's stat weights the upgrade line uses (Auto = the talent tree you have the most points in)"
     ui.specCycle:SetPoint("BOTTOMLEFT", 0, 30)
@@ -1820,12 +2074,34 @@ local function buildJournal(page)
     ui.plannerNote:SetWidth(176)
     ui.plannerNote:SetJustifyH("LEFT")
     ui.plannerNote:Hide()
+    ui.sortCycle = W.Cycle(page, 168, { "Level", "A-Z" }, function() return db.dungeonSort or "Level" end,
+        function(v) db.dungeonSort = v; refreshPage() end, "Sort: ")
+    ui.sortCycle:SetPoint("TOPLEFT", 0, -30)
+    ui.sortCycle.tipTitle = "Dungeons by level, or A-Z. Raids stay grouped by size: 10, 20, then 40 players."
     ui.entries = W.List(page, 28, function(row)
         row.btn = W.Button(row, "", 168)
         row.btn:SetPoint("LEFT", 0, 0)
-    end, function(row, e, i)
+        row.btn.label:ClearAllPoints()
+        row.btn.label:SetPoint("LEFT", 8, 0)
+        row.btn.label:SetPoint("RIGHT", -44, 0)
+        row.btn.label:SetJustifyH("LEFT")
+        row.lv = W.Label(row.btn, "", "GameFontHighlightSmall")
+        row.lv:SetPoint("RIGHT", -6, 0)
+        row.head = W.Label(row, "", "GameFontNormalSmall")
+        row.head:SetPoint("LEFT", 4, -2)
+    end, function(row, item)
+        if item.header then
+            row.btn:Hide()
+            row.head:SetText(C.gold .. item.header .. "|r")
+            row.head:Show()
+            return
+        end
+        row.head:Hide()
+        row.btn:Show()
+        local e, i = item.e, item.i
         local _, sel = journalEntries()
-        row.btn:SetText(e.name)
+        row.btn:SetText(e.short or e.name)
+        row.lv:SetText(e.levels and (C.dim .. e.levels .. "|r") or "")
         if i == sel then row.btn:LockHighlight() else row.btn:UnlockHighlight() end
         row.btn:SetScript("OnClick", function()
             if ui.jmode == "Raids" then
@@ -1838,7 +2114,7 @@ local function buildJournal(page)
         end)
     end)
     if W.SmoothScroll then W.SmoothScroll(ui.entries.frame, 56) end
-    ui.entries.frame:SetPoint("TOPLEFT", 0, -32)
+    ui.entries.frame:SetPoint("TOPLEFT", 0, -60)
     ui.entries.frame:SetPoint("BOTTOMLEFT", 0, 62)
     ui.entries.frame:SetWidth(176)
 
@@ -1873,7 +2149,7 @@ local function buildJournal(page)
         local list, sel = journalEntries()
         local entry = list[sel] or list[1]
         local PF = R:GetModule("Pathfinder")
-        if entry and PF and PF.OpenDungeonRoute then PF:OpenDungeonRoute(entry.name) end
+        if entry and PF and PF.OpenDungeonRoute then PF:OpenDungeonRoute(dataName(entry)) end
     end)
     ui.questRoute:SetPoint("RIGHT", ui.runPost, "LEFT", -6, 0)
     if W.LinkTo then W.LinkTo(ui.runPost, "Muster"); W.LinkTo(ui.questRoute, "Pathfinder") end
@@ -1883,8 +2159,15 @@ local function buildJournal(page)
     ui.runs:SetPoint("RIGHT", card, "RIGHT", -8, 0)
     ui.runs:SetWordWrap(false)
 
+    -- the loot filter, over the bosses and their drops
+    ui.lootFilter = W.Dropdown(page, 196, LOOT_FILTERS, function() return db.lootFilter or "All loot" end,
+        function(v) db.lootFilter = v; refreshPage() end, "Show: ")
+    ui.lootFilter:SetPoint("TOPLEFT", 200, -120)
+    ui.lootFilter.tipTitle = "Show only one kind of loot: an armor type, a weapon type, what your class can use, or upgrades for you"
+    ui.upLegend = W.Label(page, "", "GameFontHighlightSmall")
+    ui.upLegend:SetPoint("LEFT", ui.lootFilter, "RIGHT", 10, 0)
     ui.detail = detailList(page)
-    ui.detail.frame:SetPoint("TOPLEFT", 200, -120)
+    ui.detail.frame:SetPoint("TOPLEFT", 200, -150)
     ui.detail.frame:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -24, 0)
 end
 
@@ -1894,7 +2177,10 @@ local function refreshJournal()
         if mode == ui.jmode then b:LockHighlight() else b:UnlockHighlight() end
     end
     local list, sel = journalEntries()
-    ui.entries:SetItems(list)
+    ui.entries:SetItems(sortedEntries())
+    ui.sortCycle.Refresh()
+    ui.lootFilter.Refresh()
+    ui.upLegend:SetText(UP_ARROW .. " " .. C.dim .. "an upgrade for you, by " .. (planner() and "Ruinous Forever Planner" or "Codex's stat weights") .. "|r")
     local entry = list[sel] or list[1]
     ui.detail:SetItems(entry and foldLines(journalLines(entry, raids)) or {})
     ui.sizeBtn:SetShown(raids)
@@ -1911,8 +2197,8 @@ local function refreshJournal()
     local PF = R:GetModule("Pathfinder")
     -- a route only where the quest database knows quests for this character
     -- (WoW Forever's newest dungeons have none published yet)
-    local canRoute = PF ~= nil and PF.OpenDungeonRoute ~= nil and entry ~= nil and PF:DungeonEntry(entry.name) ~= nil
-    local qlist = canRoute and PF.DungeonQuests and PF:DungeonQuests(entry.name)
+    local canRoute = PF ~= nil and PF.OpenDungeonRoute ~= nil and entry ~= nil and PF:DungeonEntry(dataName(entry)) ~= nil
+    local qlist = canRoute and PF.DungeonQuests and PF:DungeonQuests(dataName(entry))
     if canRoute and type(qlist) == "table" and #qlist == 0 then canRoute = false end
     ui.questRoute:SetEnabled(canRoute)
     ui.questRoute.tip = canRoute and "Open a RUIN Pathfinder route through every quest of this dungeon for your character, with the quests that unlock them."
@@ -1967,12 +2253,22 @@ function M:FindDungeon(name)
             if normName(dg.name) == want then return dg end
         end
     end
-    return nil
+    -- the whole of a place split into wings: every wing's bosses
+    local whole
+    for _, dg in ipairs(ns.Dungeons or {}) do
+        if dg.group and normName(dg.group) == want then
+            whole = whole or { id = dg.group, name = dg.group, where = dg.where, areas = dg.areas, bosses = {}, wings = {} }
+            whole.wings[#whole.wings + 1] = dg
+            for _, b in ipairs(dg.bosses or {}) do whole.bosses[#whole.bosses + 1] = b end
+        end
+    end
+    return whole
 end
 -- Codex's short name for a dungeon ("The Deadmines" -> "DM"), for RUIN Core's
 -- party dungeon signal. nil when Codex doesn't know it.
 function M:DungeonShort(name)
     local dg = self:FindDungeon(name)
+    if dg and dg.wings then return "SM" end
     return dg and dg.id and tostring(dg.id):upper() or nil
 end
 -- Where the entrance is ("Moonbrook, Westfall"), when Codex knows it.
@@ -2046,10 +2342,21 @@ function M:OnEnable()
         C_Timer.After(0.2, function() pending = false; refreshPage() end)
     end)
 
+    -- upgrade arrows follow your gear, spec and level
+    for _, ev in ipairs({ "PLAYER_EQUIPMENT_CHANGED", "PLAYER_LEVEL_UP", "CHARACTER_POINTS_CHANGED", "PLAYER_TALENT_UPDATE" }) do
+        pcall(self.RegisterEvent, self, ev, function() M.ForgetUpgrades(); refreshPage() end)
+    end
+
     -- Opening Codex inside a dungeon jumps to that dungeon's entry.
     self:RegisterEvent("PLAYER_ENTERING_WORLD", function()
         local inst = GetInstanceInfo and GetInstanceInfo()
-        for i, dg in ipairs(ns.Dungeons) do if dg.name == inst then ui.selected = i; ui.jmode = "Dungeons" end end
+        local exact = false
+        for _, dg in ipairs(ns.Dungeons) do if dg.name == inst then exact = true end end
+        for i, dg in ipairs(ns.Dungeons) do
+            if dg.name == inst or (not exact and dg.group and dg.group == inst and not (ui.selected and ns.Dungeons[ui.selected].group == inst)) then
+                ui.selected = i; ui.jmode = "Dungeons"
+            end
+        end
         for i, r in ipairs(ns.Raids) do if r.name == inst then ui.raid = i; ui.jmode = "Raids" end end
         flushMobs()     -- leaving a dungeon sends its mob loot now
     end)

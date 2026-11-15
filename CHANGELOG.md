@@ -10,6 +10,11 @@ Versioning: the third number counts the meaningful changes made since the second
 
 - **Quest route is greyed out for dungeons with no known quests** (WoW Forever's newest, like Krol'dok Stronghold), with a tip saying so, instead of answering with an error in chat.
 - **Tooltips are compact and sit beside what you point at**: long lines break onto several short ones, and the tooltip opens to the side of the button with more room.
+- **Scarlet Monastery is four dungeons**: Graveyard, Library, Armory and Cathedral each have their own entry, levels, bosses and loot (trash shows in each), with the other wings named at the top.
+- **Bosses stand apart**: each boss gets its own band with a skull, its drop count and kills, its tip on the line under it, and rares tagged.
+- **A loot filter** over the bosses and drops: an armor type, a weapon type, one-hand, two-hand or ranged, cloaks, jewelry, what your class can use, or upgrades for you.
+- **A green arrow marks upgrades** beside an item's name (quest rewards too), from Ruinous Forever Planner when it's installed, else Codex's stat weights; only gear your class can use gets one.
+- **The dungeon list sorts by level** (each shows its level range), or A-Z. Raids are grouped under 10-, 20- and 40-player headers.
 
 ## 0.7.0 — 2026-11-12
 

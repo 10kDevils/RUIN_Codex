@@ -106,16 +106,41 @@ ns.Dungeons = {
             { "Charlga Razorflank", "Heals her adds and herself; interrupt." },
         },
     },
+    -- Scarlet Monastery's four wings, each its own run. group is the whole
+    -- monastery: the quest database and Pathfinder know it by that name.
     {
-        id = "sm", name = "Scarlet Monastery", areas = { 796, 6109, 6386, 10008, 10009, 10010 }, levels = "30-46", where = "Tirisfal Glades, north of Brill",
+        id = "smgy", name = "Scarlet Monastery Graveyard", short = "SM: Graveyard", group = "Scarlet Monastery", wing = "Graveyard",
+        areas = { 796, 6109, 6386, 10008, 10009, 10010 }, levels = "30-37", where = "Tirisfal Glades, north of Brill: the door on the left of the courtyard",
         bosses = {
-            { "Interrogator Vishas", "Graveyard. Shadow Word: Pain." },
-            { "Bloodmage Thalnos", "Graveyard. Fire and shadow spells." },
-            { "Houndmaster Loksey", "Library. Comes with his hounds." },
-            { "Arcanist Doan", "Library. When he casts the shield, run: Detonation follows." },
-            { "Herod", "Armory. Whirlwind; then the trainees rush in when he dies." },
-            { "Scarlet Commander Mograine", "Cathedral. Whitemane revives him; save cooldowns." },
-            { "High Inquisitor Whitemane", "Cathedral. Puts the group to sleep and resurrects Mograine." },
+            { "Interrogator Vishas", "Shadow Word: Pain on the tank; he yells at 60% and 30%." },
+            { "Bloodmage Thalnos", "Fire and shadow spells, Flame Spike on the ground. Interrupt and step out." },
+            { "Ironspine", "Rare. Poisons the tank; cure it." },
+            { "Azshir the Sleepless", "Rare. Silences and fears; stay close so the fear doesn't pull adds." },
+            { "Fallen Champion", "Rare. Hits hard; tank him away from the casters." },
+        },
+    },
+    {
+        id = "smlib", name = "Scarlet Monastery Library", short = "SM: Library", group = "Scarlet Monastery", wing = "Library",
+        areas = { 796, 6109, 6386, 10008, 10009, 10010 }, levels = "33-40", where = "Tirisfal Glades, north of Brill: the second door in the courtyard",
+        bosses = {
+            { "Houndmaster Loksey", "Comes with three hounds and Bloodlusts them. Kill or crowd-control the dogs." },
+            { "Arcanist Doan", "When he casts Arcane Bubble, run: Detonation follows. Silence him if you can." },
+        },
+    },
+    {
+        id = "smarm", name = "Scarlet Monastery Armory", short = "SM: Armory", group = "Scarlet Monastery", wing = "Armory",
+        areas = { 796, 6109, 6386, 10008, 10009, 10010 }, levels = "36-43", where = "Tirisfal Glades, north of Brill: through the Library wing (needs the Scarlet Key)",
+        bosses = {
+            { "Herod", "Whirlwind: the tank holds, everyone else steps back. Scarlet Trainees rush in when he dies." },
+        },
+    },
+    {
+        id = "smcath", name = "Scarlet Monastery Cathedral", short = "SM: Cathedral", group = "Scarlet Monastery", wing = "Cathedral",
+        areas = { 796, 6109, 6386, 10008, 10009, 10010 }, levels = "38-46", where = "Tirisfal Glades, north of Brill: through the Library wing (needs the Scarlet Key)",
+        bosses = {
+            { "High Inquisitor Fairbanks", "Hidden in the side room of the chapel. Dispel his curses and Power Word: Shield." },
+            { "Scarlet Commander Mograine", "Pulls the whole chapel if you're careless. Whitemane revives him; save cooldowns." },
+            { "High Inquisitor Whitemane", "Puts the group to sleep and resurrects Mograine. Interrupt her heals." },
         },
     },
     {
