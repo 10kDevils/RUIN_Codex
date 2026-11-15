@@ -16,51 +16,57 @@
 local ADDON, ns = ...
 
 ns.SpecWeights = {
+    -- Physical specs: 1 Strength is 2 attack power for warriors, paladins and
+    -- shamans (1 for rogues, hunters and cats), and a weapon's damage per
+    -- second is worth 14 attack power. Ratings: 14 crit, 10 hit, 10 haste,
+    -- 10 expertise per 1%.
     WARRIOR = {
-        Arms        = { STR = 1.0, AGI = 0.55, STA = 0.2, AP = 0.45, CRIT = 0.85, HIT = 0.95, HASTE = 0.7, EXP = 0.9, ARMOR = 0.005, DPS = 3.0, RDPS = 0.3 },
-        Fury        = { STR = 1.0, AGI = 0.5, STA = 0.2, AP = 0.45, CRIT = 0.9, HIT = 1.0, HASTE = 0.75, EXP = 0.9, ARMOR = 0.005, DPS = 2.4, RDPS = 0.3 },
-        Protection  = { STA = 1.0, STR = 0.5, AGI = 0.6, DEF = 1.0, DODGE = 0.8, PARRY = 0.75, BLOCK = 0.55, BV = 0.3, ARMOR = 0.06, HIT = 0.45, EXP = 0.55, AP = 0.2, DPS = 1.0, RDPS = 0.2 },
+        Arms        = { STR = 1.0, AGI = 0.5, STA = 0.15, AP = 0.5, CRIT = 0.75, HIT = 1.0, HASTE = 0.7, EXP = 0.9, ARMOR = 0.003, DPS = 7.0, RDPS = 0.3 },
+        Fury        = { STR = 1.0, AGI = 0.5, STA = 0.15, AP = 0.5, CRIT = 0.8, HIT = 1.05, HASTE = 0.75, EXP = 0.95, ARMOR = 0.003, DPS = 6.0, RDPS = 0.3 },
+        Protection  = { STA = 1.0, STR = 0.45, AGI = 0.55, DEF = 1.0, DODGE = 0.8, PARRY = 0.75, BLOCK = 0.5, BV = 0.3, ARMOR = 0.06, HIT = 0.45, EXP = 0.55, AP = 0.2, DPS = 1.5, RDPS = 0.2 },
     },
     PALADIN = {
-        Holy        = { INT = 1.0, SPI = 0.4, STA = 0.2, HEAL = 0.9, SP = 0.15, CRIT = 0.75, HASTE = 0.7, MP5 = 1.2 },
-        Protection  = { STA = 1.0, STR = 0.45, AGI = 0.4, INT = 0.2, DEF = 1.0, DODGE = 0.75, PARRY = 0.7, BLOCK = 0.6, BV = 0.35, SP = 0.4, ARMOR = 0.06, HIT = 0.4, EXP = 0.5 },
-        Retribution = { STR = 1.0, AGI = 0.45, INT = 0.15, STA = 0.2, AP = 0.45, SP = 0.2, CRIT = 0.85, HIT = 0.95, HASTE = 0.6, EXP = 0.85, DPS = 3.0 },
+        Holy        = { HEAL = 1.0, INT = 0.6, SPI = 0.1, STA = 0.15, SP = 0.1, CRIT = 0.6, HASTE = 0.5, MP5 = 1.6 },
+        Protection  = { STA = 1.0, STR = 0.4, AGI = 0.4, INT = 0.2, DEF = 1.0, DODGE = 0.75, PARRY = 0.7, BLOCK = 0.55, BV = 0.35, SP = 0.4, ARMOR = 0.06, HIT = 0.4, EXP = 0.5, DPS = 1.5 },
+        Retribution = { STR = 1.0, AGI = 0.5, INT = 0.15, STA = 0.15, AP = 0.5, SP = 0.15, CRIT = 0.75, HIT = 1.0, HASTE = 0.6, EXP = 0.85, ARMOR = 0.003, DPS = 6.5 },
     },
     HUNTER = {
-        ["Beast Mastery"] = { AGI = 1.0, INT = 0.25, STA = 0.2, AP = 0.45, CRIT = 0.75, HIT = 1.0, HASTE = 0.8, DPS = 0.4, RDPS = 2.6 },
-        Marksmanship      = { AGI = 1.0, INT = 0.25, STA = 0.2, AP = 0.45, CRIT = 0.85, HIT = 1.0, HASTE = 0.75, DPS = 0.4, RDPS = 3.0 },
-        Survival          = { AGI = 1.05, INT = 0.25, STA = 0.2, AP = 0.4, CRIT = 0.85, HIT = 1.0, HASTE = 0.7, DPS = 0.6, RDPS = 2.6 },
+        ["Beast Mastery"] = { AGI = 1.0, INT = 0.2, STA = 0.15, AP = 0.5, CRIT = 0.7, HIT = 1.0, HASTE = 0.75, DPS = 0.5, RDPS = 6.5 },
+        Marksmanship      = { AGI = 1.0, INT = 0.2, STA = 0.15, AP = 0.5, CRIT = 0.8, HIT = 1.0, HASTE = 0.7, DPS = 0.5, RDPS = 7.0 },
+        Survival          = { AGI = 1.0, INT = 0.2, STA = 0.15, AP = 0.45, CRIT = 0.8, HIT = 1.0, HASTE = 0.65, DPS = 0.7, RDPS = 6.5 },
     },
     ROGUE = {
-        Assassination = { AGI = 1.0, STR = 0.4, STA = 0.2, AP = 0.45, CRIT = 0.8, HIT = 1.0, HASTE = 0.8, EXP = 0.9, DPS = 2.0, RDPS = 0.3 },
-        Combat        = { AGI = 1.0, STR = 0.45, STA = 0.2, AP = 0.45, CRIT = 0.85, HIT = 1.05, HASTE = 0.85, EXP = 1.0, DPS = 2.6, RDPS = 0.3 },
-        Subtlety      = { AGI = 1.0, STR = 0.4, STA = 0.25, AP = 0.45, CRIT = 0.85, HIT = 0.95, HASTE = 0.7, EXP = 0.85, DPS = 2.2, RDPS = 0.3 },
+        Assassination = { AGI = 1.0, STR = 0.55, STA = 0.15, AP = 0.55, CRIT = 0.75, HIT = 1.0, HASTE = 0.75, EXP = 0.9, DPS = 6.0, RDPS = 0.3 },
+        Combat        = { AGI = 1.0, STR = 0.55, STA = 0.15, AP = 0.55, CRIT = 0.75, HIT = 1.05, HASTE = 0.8, EXP = 1.0, DPS = 7.0, RDPS = 0.3 },
+        Subtlety      = { AGI = 1.0, STR = 0.55, STA = 0.2, AP = 0.55, CRIT = 0.8, HIT = 0.95, HASTE = 0.7, EXP = 0.85, DPS = 6.0, RDPS = 0.3 },
     },
+    -- Casters: spell power is 1. Intellect is mana and a little crit, worth
+    -- well under a point of spell power; wands count while leveling.
     PRIEST = {
-        Discipline = { INT = 1.0, SPI = 0.6, STA = 0.25, HEAL = 0.85, SP = 0.25, CRIT = 0.7, HASTE = 0.65, MP5 = 1.1, RDPS = 0.5 },
-        Holy       = { INT = 0.9, SPI = 0.85, STA = 0.2, HEAL = 0.95, SP = 0.15, CRIT = 0.65, HASTE = 0.7, MP5 = 1.0, RDPS = 0.4 },
-        Shadow     = { INT = 0.6, SPI = 0.35, STA = 0.3, SP = 1.0, CRIT = 0.6, HIT = 1.05, HASTE = 0.85, RDPS = 0.9 },
+        Discipline = { HEAL = 1.0, INT = 0.5, SPI = 0.3, STA = 0.15, SP = 0.15, CRIT = 0.4, HASTE = 0.5, MP5 = 1.5, RDPS = 1.0 },
+        Holy       = { HEAL = 1.0, INT = 0.45, SPI = 0.45, STA = 0.15, SP = 0.1, CRIT = 0.45, HASTE = 0.5, MP5 = 1.5, RDPS = 1.0 },
+        Shadow     = { SP = 1.0, INT = 0.35, SPI = 0.25, STA = 0.15, CRIT = 0.35, HIT = 1.0, HASTE = 0.7, MP5 = 0.6, RDPS = 1.5 },
     },
     SHAMAN = {
-        Elemental   = { INT = 0.6, SPI = 0.2, STA = 0.2, SP = 1.0, CRIT = 0.85, HIT = 1.0, HASTE = 0.8, MP5 = 0.6 },
-        Enhancement = { STR = 0.9, AGI = 0.8, INT = 0.25, STA = 0.2, AP = 0.45, SP = 0.2, CRIT = 0.85, HIT = 1.0, HASTE = 0.85, EXP = 0.85, DPS = 3.0 },
-        Restoration = { INT = 1.0, SPI = 0.4, STA = 0.2, HEAL = 0.9, SP = 0.15, CRIT = 0.6, HASTE = 0.75, MP5 = 1.3 },
+        Elemental   = { SP = 1.0, INT = 0.4, SPI = 0.1, STA = 0.15, CRIT = 0.65, HIT = 1.0, HASTE = 0.7, MP5 = 0.8 },
+        Enhancement = { STR = 1.0, AGI = 0.6, INT = 0.15, STA = 0.15, AP = 0.5, SP = 0.1, CRIT = 0.75, HIT = 1.0, HASTE = 0.8, EXP = 0.85, ARMOR = 0.003, DPS = 6.0 },
+        Restoration = { HEAL = 1.0, INT = 0.5, SPI = 0.15, STA = 0.15, SP = 0.1, CRIT = 0.45, HASTE = 0.55, MP5 = 1.7 },
     },
     MAGE = {
-        Arcane = { INT = 0.75, SPI = 0.35, STA = 0.2, SP = 1.0, CRIT = 0.75, HIT = 1.0, HASTE = 0.85, MP5 = 0.4, RDPS = 0.9 },
-        Fire   = { INT = 0.6, SPI = 0.2, STA = 0.2, SP = 1.0, CRIT = 0.95, HIT = 1.05, HASTE = 0.8, RDPS = 0.9 },
-        Frost  = { INT = 0.55, SPI = 0.2, STA = 0.25, SP = 1.0, CRIT = 0.8, HIT = 1.05, HASTE = 0.8, RDPS = 0.9 },
+        Arcane = { SP = 1.0, INT = 0.5, SPI = 0.25, STA = 0.15, CRIT = 0.55, HIT = 1.0, HASTE = 0.75, MP5 = 0.5, RDPS = 1.5 },
+        Fire   = { SP = 1.0, INT = 0.4, SPI = 0.15, STA = 0.15, CRIT = 0.7, HIT = 1.05, HASTE = 0.7, MP5 = 0.4, RDPS = 1.5 },
+        Frost  = { SP = 1.0, INT = 0.35, SPI = 0.15, STA = 0.15, CRIT = 0.6, HIT = 1.05, HASTE = 0.7, MP5 = 0.4, RDPS = 1.5 },
     },
     WARLOCK = {
-        Affliction  = { INT = 0.5, SPI = 0.25, STA = 0.4, SP = 1.0, CRIT = 0.55, HIT = 1.05, HASTE = 0.85, RDPS = 0.9 },
-        Demonology  = { INT = 0.5, SPI = 0.2, STA = 0.5, SP = 1.0, CRIT = 0.65, HIT = 1.0, HASTE = 0.8, RDPS = 0.9 },
-        Destruction = { INT = 0.5, SPI = 0.15, STA = 0.35, SP = 1.0, CRIT = 0.85, HIT = 1.05, HASTE = 0.85, RDPS = 0.9 },
+        Affliction  = { SP = 1.0, INT = 0.3, SPI = 0.15, STA = 0.3, CRIT = 0.25, HIT = 1.05, HASTE = 0.75, MP5 = 0.3, RDPS = 1.5 },
+        Demonology  = { SP = 1.0, INT = 0.3, SPI = 0.1, STA = 0.35, CRIT = 0.4, HIT = 1.0, HASTE = 0.7, MP5 = 0.3, RDPS = 1.5 },
+        Destruction = { SP = 1.0, INT = 0.3, SPI = 0.1, STA = 0.25, CRIT = 0.65, HIT = 1.05, HASTE = 0.75, MP5 = 0.3, RDPS = 1.5 },
     },
     DRUID = {
-        Balance          = { INT = 0.65, SPI = 0.3, STA = 0.2, SP = 1.0, CRIT = 0.8, HIT = 1.0, HASTE = 0.8, MP5 = 0.5 },
-        ["Feral (cat)"]  = { AGI = 1.0, STR = 0.75, STA = 0.2, AP = 0.45, CRIT = 0.85, HIT = 1.0, HASTE = 0.6, EXP = 0.85 },
+        Balance          = { SP = 1.0, INT = 0.4, SPI = 0.15, STA = 0.15, CRIT = 0.55, HIT = 1.0, HASTE = 0.7, MP5 = 0.8 },
+        ["Feral (cat)"]  = { AGI = 1.0, STR = 0.9, STA = 0.15, AP = 0.45, CRIT = 0.75, HIT = 1.0, HASTE = 0.55, EXP = 0.85 },
         ["Feral (bear)"] = { STA = 1.0, AGI = 0.8, STR = 0.35, DEF = 0.85, DODGE = 0.9, ARMOR = 0.09, HIT = 0.35, EXP = 0.5, AP = 0.15 },
-        Restoration      = { INT = 0.9, SPI = 0.8, STA = 0.2, HEAL = 0.95, SP = 0.15, CRIT = 0.5, HASTE = 0.75, MP5 = 1.1 },
+        Restoration      = { HEAL = 1.0, INT = 0.45, SPI = 0.4, STA = 0.15, SP = 0.1, CRIT = 0.35, HASTE = 0.55, MP5 = 1.5 },
     },
 }
 

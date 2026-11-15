@@ -21,6 +21,8 @@ IS.RATING = { CRIT = 14, HIT = 10, HASTE = 10, EXP = 10, DODGE = 12, PARRY = 15,
 local SCHOOLS = { arcane = "ARCANE", fire = "FIRE", frost = "FROST", nature = "NATURE", shadow = "SHADOW", holy = "HOLY" }
 IS.SCHOOLS = SCHOOLS
 
+local PLAIN = { strength = "STR", agility = "AGI", stamina = "STA", intellect = "INT", spirit = "SPI" }
+
 local function num(s) return tonumber((tostring(s or ""):gsub(",", ""))) end
 
 local function add(t, key, value)
@@ -137,6 +139,14 @@ function IS.ParseLine(line, t)
     if a then pct(t, "BLOCK", a); return true end
     a = s:match("^increases the block value of your shield by ([%d,]+)$")
     if a then add(t, "BV", a); return true end
+
+    -- plain stats: "+6 Strength", and an enchant's "Spirit +4" or "+3 All Stats"
+    -- (the item API leaves enchants out, and losing one is part of a swap)
+    a, b = s:match("^%+([%d,]+) (%a+)$")
+    if not a then b, a = s:match("^(%a+) %+([%d,]+)$") end
+    if a and PLAIN[b] then add(t, PLAIN[b], a); return true end
+    a = s:match("^%+([%d,]+) all stats$") or s:match("^all stats %+([%d,]+)$") or s:match("^stats %+([%d,]+)$")
+    if a then for _, k in ipairs({ "STR", "AGI", "STA", "INT", "SPI" }) do add(t, k, a) end; return true end
     return false
 end
 

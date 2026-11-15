@@ -36,4 +36,4 @@ Add a file with one `ns.AddLoot` per instance (list it in `RUIN_Codex.toc` after
 Items looted inside a dungeon or raid (item and instance): yours, and those of groupmates who don't run RUIN (reported by one RUIN member of the group, so each drop counts once). When you connect, a member who knows more drops sends you the counts you missed.
 
 ## Notes
-Dungeon and raid data are WoW Classic's as a placeholder, and the Journal says so: the sample Deadmines loot list is marked *Not checked on Forever*. Stat weights are a reasoned starting point, not simulation output. Gear tracking (best-in-slot lists, a gear path) moved out of Codex in 0.3.10; RUIN will use a dedicated gear addon for it.
+Dungeon and raid data are WoW Classic's as a placeholder, and the Journal says so: the sample Deadmines loot list is marked *Not checked on Forever*. Stat weights are a reasoned starting point, not simulation output; casters' Intellect, Spirit and mana per 5 count for more while leveling. Gear tracking (best-in-slot lists, a gear path) moved out of Codex in 0.3.10; RUIN will use a dedicated gear addon for it.

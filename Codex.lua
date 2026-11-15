@@ -261,10 +261,36 @@ local function itemIdFromLink(link)
     return tonumber(tostring(link):match("item:(%d+)"))
 end
 
-local function weightsFor(class, spec)
+local function baseWeights(class, spec)
     local byClass = ns.SpecWeights[class or ""]
     return byClass and (byClass[spec or ""] or byClass[(ns.SpecOrder[class] or {})[1] or ""]) or ns.Weights[class or ""]
 end
+
+-- While leveling, a caster's mana is what runs out: a small pool, and drinking
+-- between pulls. Intellect, Spirit and mana per 5 are worth more the lower your
+-- level (about twice as much at 25, as at 60 from 60 on), against spell power and healing.
+local MANA_SPECS = { PRIEST = true, MAGE = true, WARLOCK = true, ["DRUID:Balance"] = true, ["DRUID:Restoration"] = true,
+                     ["SHAMAN:Elemental"] = true, ["SHAMAN:Restoration"] = true, ["PALADIN:Holy"] = true }
+local leveled = {}
+function M.ManaFactor(level)
+    level = tonumber(level) or 60
+    return math.max(1, math.min(2.5, 1 + 1.5 * (60 - level) / 50))
+end
+local function weightsFor(class, spec, level)
+    local w = baseWeights(class, spec)
+    if not w or not (MANA_SPECS[class or ""] or MANA_SPECS[(class or "") .. ":" .. (spec or "")]) then return w end
+    level = level or (UnitLevel and UnitLevel("player")) or 60
+    local f = M.ManaFactor(level)
+    if f <= 1 then return w end
+    local k = tostring(class) .. ":" .. tostring(spec) .. ":" .. tostring(level)
+    if leveled[k] then return leveled[k] end
+    local out = {}
+    for stat, v in pairs(w) do out[stat] = v end
+    for _, stat in ipairs({ "INT", "SPI", "MP5" }) do if out[stat] then out[stat] = out[stat] * f end end
+    leveled[k] = out
+    return out
+end
+M.WeightsFor = weightsFor
 
 -- An item's value for a class and spec: the item API's stats plus its
 -- tooltip's "Equip:" lines (spell damage and healing, crit, hit, attack

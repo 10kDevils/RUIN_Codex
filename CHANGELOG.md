@@ -15,6 +15,12 @@ Versioning: the third number counts the meaningful changes made since the second
 - **A loot filter** over the bosses and drops: an armor type, a weapon type, one-hand, two-hand or ranged, cloaks, jewelry, what your class can use, or upgrades for you.
 - **A green arrow marks upgrades** beside an item's name (quest rewards too), from Ruinous Forever Planner when it's installed, else Codex's stat weights; only gear your class can use gets one.
 - **The dungeon list sorts by level** (each shows its level range), or A-Z. Raids are grouped under 10-, 20- and 40-player headers.
+- **Stat weights rechecked for every spec**, so "upgrade" means it:
+  - Weapon damage per second now counts at its real worth (14 attack power per point; it was counted at well under half), for melee specs and hunters' ranged weapons, so a weapon with a few stats and less damage no longer reads as an upgrade.
+  - Casters' Intellect counts for less against spell power at 60, and healers weigh healing above Intellect. Mana per 5 counts for shadow priests, mages and warlocks.
+  - While leveling, Intellect, Spirit and mana per 5 count for more the lower your level (about twice as much at 25), since a caster's mana is what runs out.
+  - Rogues weigh Strength like attack power (a point of each is a point of attack power).
+- **The enchant on what you wear counts** when an item is compared (you lose it in a swap): "Spirit +4" and the like, plus plain stat lines the item API leaves out.
 
 ## 0.7.0 — 2026-11-12
 
