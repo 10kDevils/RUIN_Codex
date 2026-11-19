@@ -2,7 +2,8 @@
 -- Boss drops with their item IDs, from QuestieDB's WoW Forever database (1.1.3,
 -- 2026-11-19: build 1.60.1.70959) checked against the Gear, Boss & Loot Watch
 -- database of the same day and the launch guides (ForeverChanges, Wowhead
--- Forever, Icy Veins, Mobalytics, Timesaver). With item IDs the Journal shows
+-- Forever, Icy Veins, Mobalytics, Timesaver), plus ForeverDB's dungeon pages and
+-- QuestieDB's development data of Nov 18. With item IDs the Journal shows
 -- each drop's link and Best in Slot can weigh it. Quest items are marked so
 -- they stay out of gear advice. Unverified until RUIN members loot them.
 local ADDON, ns = ...
@@ -22,6 +23,7 @@ ns.AddLoot("hot", {
 ns.AddLoot("rol", {
     source = "QuestieDB WoW Forever 1.1.3 and the Gear, Boss & Loot Watch, Nov 19 2026 (complete)",
     verified = false,
+    trash = { { 286977, name = "Sword of the Fallen", info = "Two-hand Sword, level 18; from the ghouls" }, { 286978, name = "Rotmender's Garb", info = "Cloth chest, level 18; Rotmender's Raiment set" }, { 286979, name = "Rotmender's Gloves", info = "Cloth hands, level 17; Rotmender's Raiment set" }, { 286980, name = "Rotmender's Sash", info = "Cloth waist, level 17; Rotmender's Raiment set" }, { 286981, name = "Death Bindings", info = "Mail wrist, level 16" } },
     bosses = {
         { "Witherfang", { { 271201, name = "Atrophic Girdle", info = "Mail Waist" }, { 271202, name = "Witherbite Bracers", info = "Leather Wrist" }, { 271203, name = "Segmented Spider Leg", info = "Agi Staff" }, { 275443, name = "Highly Toxic Strain", info = "Quest item", quest = true } } },
         { "The Baron", { { 268518, name = "Head of the Baron", info = "Quest item", quest = true }, { 271204, name = "Meathook Slicer", info = "Dagger" }, { 271205, name = "Abomination Bones", info = "Mail Chest" }, { 271206, name = "Leftover Abomination Skin", info = "Cloth Chest" } } },
@@ -36,10 +38,11 @@ ns.AddLoot("rol", {
 ns.AddLoot("exc", {
     source = "QuestieDB WoW Forever 1.1.3 and the Gear, Boss & Loot Watch, Nov 19 2026 (complete)",
     verified = false,
+    trash = { { 286982, name = "Unearthed Barrier", info = "Shield, level 27; boss unconfirmed" }, { 286985, name = "Thicket Bindings", info = "Leather, level 26; boss unconfirmed" }, { 286986, name = "Abandoned Leggings", info = "Cloth, level 26; boss unconfirmed" }, { 287068, name = "Excavated Dagger", info = "Thrown, level 28; boss unconfirmed" } },
     bosses = {
         { "Saltspine", { { 273022, name = "Supple Bellyskin Leggings", info = "Legs Leather, +Str +Sta - strong tank" }, { 273023, name = "Saltscale Girdle", info = "Waist Mail, +Str +Int" }, { 273024, name = "Glinteye Slippers", info = "Feet Cloth, Spell power" } } },
         { "Shadetooth", { { 271100, name = "Thicket Raptor Meat", info = "Quest item", quest = true }, { 273025, name = "Raptorclaw Greaves", info = "Feet Mail" }, { 273026, name = "Garb of Florid Feathers", info = "Chest Leather, +Agi +Int" }, { 273027, name = "Raptor's Gaze", info = "Off-hand, Spell power" }, { 273106, name = "Blueprint: Greenhouse", info = "Camp blueprint, Herbalism 140" }, { 284845, name = "Thicket Raptor Hide", info = "Quest item", quest = true } } },
-        { "Highland Horror", { { 270180, name = "Horrible Rootcore", info = "Quest item", quest = true }, { 286982, name = "Unearthed Barrier", info = "Shield, level 27" }, { 286985, name = "Thicket Bindings", info = "Leather, level 26" }, { 286986, name = "Abandoned Leggings", info = "Cloth, level 26" }, { 287068, name = "Excavated Dagger", info = "Thrown, level 28" } } },
+        { "Highland Horror", { { 270180, name = "Horrible Rootcore", info = "Quest item", quest = true } } },
         { "Relic Guardian", { { 270865, name = "Titan Relic", info = "Quest item, Starts Alliance/Horde chains", quest = true }, { 270866, name = "Titan Relic", info = "Quest item, Starts Alliance/Horde chains", quest = true }, { 273028, name = "Reliquary Mantle", info = "Shoulder Mail, +Sta +hit" }, { 273029, name = "Golemsight Long Gun", info = "Gun, +Agi" }, { 273030, name = "Ring of Power Regulation", info = "Finger, MP5 / SP" }, { 273097, name = "Blueprint: Rock Garden", info = "Camp blueprint, Mining 140" } } },
     },
 })
@@ -47,6 +50,7 @@ ns.AddLoot("exc", {
 ns.AddLoot("dal", {
     source = "QuestieDB WoW Forever 1.1.3 and the Gear, Boss & Loot Watch, Nov 19 2026 (strong)",
     verified = false,
+    trash = { { 286987, name = "Violet Sorcerer's Sandals", info = "Cloth feet, level 28; Violet Sorcerer's Vestments" }, { 286988, name = "Violet Sorcerer's Leggings", info = "Cloth legs, level 29; Violet Sorcerer's Vestments" }, { 286989, name = "Violet Sorcerer's Wraps", info = "Cloth wrist, level 28; Violet Sorcerer's Vestments, also Arcane Anomaly" }, { 286990, name = "Arcane Remnant Leggings", info = "Leather legs, level 28" }, { 286991, name = "Roused Nature Footwraps", info = "Leather feet, level 27" }, { 286992, name = "Construct's Grips", info = "Mail hands, level 28" }, { 286995, name = "Guardian's Emblem", info = "Level 28" }, { 286996, name = "City Guard's Tarnished Blade", info = "One-hand Sword, level 29" } },
     bosses = {
         { "Atrexis the Grave Knight", { { 273032, name = "Bonebinder's Signet", info = "Finger" }, { 273033, name = "Gravespike Repeater", info = "Crossbow" }, { 273036, name = "Graveweave Bindings", info = "Cloth Wrist" } } },
         { "Lyn the Ignored", { { 273053, name = "Tendonscraper Dagger", info = "caster MH" }, { 273054, name = "Cartilage Shapers", info = "Leather, level 28" }, { 273055, name = "Bonepile Gaze", info = "Shield, level 28" } } },
@@ -120,6 +124,6 @@ ns.AddLoot("shaper", {
     bosses = {
         { "Vitrix", { { 280031, name = "Sparklance Wand", info = "Wand, level 58" }, { 280032, name = "Bolt's Charged Eyeball", info = "Level 58" } } },
         { "Snowtalon", { { 280026, name = "Albinofur Grips", info = "Mail, level 58; also from Vitrix" }, { 280027, name = "Crownroar Chestplate", info = "Plate, level 58; also from Vitrix" } } },
-        { "Cinder", { { 280028, name = "Heartflame Gauntlets", info = "Plate, level 58; also from Vitrix" } } },
+        { "Cinder", { { 280028, name = "Heartflame Gauntlets", info = "Plate, level 58; also from Vitrix" }, { 280029, name = "Cinderedge Crescent", info = "One-hand Axe, level 58" } } },
     },
 })
