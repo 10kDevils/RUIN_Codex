@@ -1,6 +1,6 @@
 -- RUIN Codex: new ranks onto your action bars
 -- Learning a new rank of a spell at a class trainer leaves the old rank on
--- your action bars. After you learn something at a trainer, a small prompt
+-- your action bars. When you close a trainer you learned something at, a small prompt
 -- shows how many buttons have a higher rank you now know; one click puts the
 -- highest rank on each of them. Macros and items aren't touched, and nothing
 -- changes in combat (the game doesn't allow it): the button waits until
@@ -235,8 +235,11 @@ local function queueCheck()
     C_Timer.After(1, function() checkQueued = false; RU.Check(false) end)
 end
 
+-- learned at the trainer: wait until its window closes, then ask once
+local learnedHere = false
 local function learned()
-    if trainerOpen or (GetTime and GetTime() - lastTrainer < 30) then queueCheck() end
+    if trainerOpen then learnedHere = true
+    elseif GetTime and GetTime() - lastTrainer < 30 then queueCheck() end
 end
 
 function RU.Init(module)
@@ -247,9 +250,13 @@ function RU.Init(module)
         pcall(ev.RegisterEvent, ev, e)
     end
     ev:SetScript("OnEvent", function(_, e)
-        if e == "TRAINER_SHOW" then trainerOpen = true
+        if e == "TRAINER_SHOW" then
+            trainerOpen = true
+            if f then f:Hide() end
         elseif e == "TRAINER_CLOSED" then
-            trainerOpen = false
+            -- some clients send TRAINER_CLOSED more than once: ask only the first time
+            if trainerOpen and learnedHere then queueCheck() end
+            trainerOpen, learnedHere = false, false
             lastTrainer = GetTime and GetTime() or 0
         elseif e == "LEARNED_SPELL_IN_TAB" or e == "LEARNED_SPELL_IN_SKILL_LINE" then learned()
         elseif (e == "PLAYER_REGEN_ENABLED" or e == "PLAYER_REGEN_DISABLED") and f and f:IsShown() then paint() end
