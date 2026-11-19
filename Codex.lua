@@ -3,8 +3,9 @@
 -- and a dungeon and raid journal: bosses, the loot each boss drops (from loot
 -- data files, see Loot.lua), drops RUIN members have looted, and run planning
 -- with RUIN Muster. Item tooltips say whether an item is an upgrade for your
--- spec. Gear tracking (best-in-slot lists, a gear path) is left to a gear
--- addon RUIN may work with later.
+-- spec, and the Best in Slot tab shows the best pieces you can get at your
+-- level (Gear.lua). After a class trainer, a prompt updates your action bars
+-- to the ranks you learned (RankUp.lua).
 local ADDON, ns = ...
 
 -- WoW Forever runs on the Retail 12 client, where the old global item
@@ -29,7 +30,7 @@ local C = W.COLORS
 -- What the player lets RUIN share about them (RUIN Core: Settings > Display)
 local function shares(kind) return not (R.Shares and not R:Shares(kind)) end
 
-local M = R:RegisterModule("Codex", { version = "0.8.0" })
+local M = R:RegisterModule("Codex", { version = "0.8.1" })
 ns.Codex = M
 
 local DEFAULTS = { drops = {}, kills = {}, mobs = {}, collapsed = {}, tooltip = true, spec = "Auto", installed = {},
@@ -2241,19 +2242,22 @@ local function refreshJournal()
         or (#runs > 0 and (C.good .. "Upcoming: |r" .. table.concat(runs, ",  ")) or (C.dim .. "No run scheduled yet.|r")))
 end
 
-local TAB_JOURNAL, TAB_MACROS = 1, 2      -- the Journal comes first
+local TAB_JOURNAL, TAB_MACROS, TAB_BIS = 1, 2, 3      -- the Journal comes first
 
 local function buildPage(panel)
     ui.panel = panel
-    ui.tabs = W.SubTabs(panel, { "Journal", "Macros" }, function() refreshPage() end)
+    ui.tabs = W.SubTabs(panel, { "Journal", "Macros", "Best in Slot" }, function() refreshPage() end)
     buildJournal(ui.tabs.pages[TAB_JOURNAL])
     if ns.Macros then ns.Macros.Build(ui.tabs.pages[TAB_MACROS]) end
+    if ns.Gear then ns.Gear.Build(ui.tabs.pages[TAB_BIS]) end
 
     refreshPage = function()
         if not ui.panel:IsVisible() then return end
         local tab = ui.tabs.selected
         if tab == TAB_MACROS then
             if ns.Macros then ns.Macros.Refresh() end
+        elseif tab == TAB_BIS then
+            if ns.Gear then ns.Gear.Refresh() end
         elseif tab == TAB_JOURNAL then
             refreshJournal()
         end
@@ -2318,6 +2322,7 @@ function M:OnEnable()
     ns.CodexDB = function() return db end
     ns.CodexHelpers = { myClass = myClass, mySpec = mySpec, CLASSES = CLASSES }
     if ns.Macros then ns.Macros.Init(self) end
+    if ns.RankUp then ns.RankUp.Init(self) end
     -- a loot data addon can fill RUIN_CodexLoot = { [instance] = data, ... } before Codex loads
     if type(RUIN_CodexLoot) == "table" then
         for inst, data in pairs(RUIN_CodexLoot) do ns.Loot.Add(inst, data) end
@@ -2370,7 +2375,7 @@ function M:OnEnable()
 
     -- upgrade arrows follow your gear, spec and level
     for _, ev in ipairs({ "PLAYER_EQUIPMENT_CHANGED", "PLAYER_LEVEL_UP", "CHARACTER_POINTS_CHANGED", "PLAYER_TALENT_UPDATE" }) do
-        pcall(self.RegisterEvent, self, ev, function() M.ForgetUpgrades(); refreshPage() end)
+        pcall(self.RegisterEvent, self, ev, function() M.ForgetUpgrades(); if ns.Gear then ns.Gear.Forget() end; refreshPage() end)
     end
 
     -- Opening Codex inside a dungeon jumps to that dungeon's entry.
@@ -2392,7 +2397,7 @@ function RUIN_Codex_Open() M:OpenTab() end
 BINDING_HEADER_RUIN_CODEX = "RUIN Codex"
 BINDING_NAME_RUIN_CODEX_OPEN = "Open Codex"
 
--- /codex [dungeon or raid name] | journal | raids | macros | commands | spec <name|auto>
+-- /codex [dungeon or raid name] | journal | raids | macros | commands | bis | ranks | spec <name|auto>
 SLASH_RUINCODEX1 = "/codex"
 SlashCmdList.RUINCODEX = function(msg)
     msg = (msg or ""):lower()
@@ -2402,8 +2407,10 @@ SlashCmdList.RUINCODEX = function(msg)
     elseif cmd == "raids" or cmd == "raid" then tab = TAB_JOURNAL; ui.jmode = "Raids"
     elseif cmd == "macros" or cmd == "macro" then tab = TAB_MACROS; if ns.Macros then ns.Macros.SetMode("macros") end
     elseif cmd == "commands" or cmd == "cmds" then tab = TAB_MACROS; if ns.Macros then ns.Macros.SetMode("commands") end
-    elseif cmd == "path" or cmd == "gear" or cmd == "bis" or cmd == "upgrades" then
-        return M:Print("Gear Path and best-in-slot lists have left Codex; RUIN will work with a gear addon for them. Item tooltips still show the upgrade line.")
+    elseif cmd == "path" or cmd == "gear" or cmd == "bis" or cmd == "upgrades" then tab = TAB_BIS
+    elseif cmd == "ranks" or cmd == "rank" then
+        if ns.RankUp then ns.RankUp.Check(true) end
+        return
     elseif cmd == "spellmath" then
         M:Print(M.SpellMathReport and M.SpellMathReport() or "Spell math isn't loaded.")
         return

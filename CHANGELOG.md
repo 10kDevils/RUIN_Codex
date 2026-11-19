@@ -4,7 +4,10 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## Unreleased
 
-(nothing yet)
+## 0.8.1
+
+- **Best in Slot tab**: your character in the middle with every slot around it, each showing the best piece you can get and wear at your level and where it drops (boss and dungeon, trash, or a dungeon quest reward). It looks through the Journal's dungeon and raid loot and what you wear now, counts only what your class can use at your level, and scores pieces by Ruinous Forever Planner when it's installed, else Codex's weights for your spec. A two-hander is weighed against the best main hand and off hand together. The character can wear the pieces or your own gear; drag to turn it, click a piece to link it. Also /codex bis.
+- **New ranks onto your bars after training**: when you learn spells at a class trainer, a prompt shows how many action buttons hold a lower rank of a spell you now know, and one click puts the highest rank on each. Macros and items are left alone, it only ever moves a rank up, and in combat it waits until you're out. /codex ranks checks your bars at any time.
 
 ## 0.8.0 — 2026-11-15
 
