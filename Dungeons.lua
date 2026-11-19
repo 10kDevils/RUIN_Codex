@@ -287,12 +287,12 @@ ns.Dungeons = {
     {
         id = "hot", name = "Hall of Thanes", areas = { 16919 }, levels = "13-18", where = "Beneath Ironforge / Dun Morogh", forever = "2026-11-05",
         bosses = {
-            { "Faldrim Anvilmar", "Anvilmar's Curse: about 20% attack/cast speed reduction on tank (dispel/remove curse); Mind Blast: interruptible." },
+            { "Faldrim Anvilmar", "Anvilmar's Curse: about 20% attack/cast speed reduction on tank (dispel/remove curse); Mind Blast: interruptible. Putting his spirit to rest completes An Ancient Grudge." },
             { "Magmatus", "Combust: 360-degree AoE - move out; Bloodhound Runts: disease increasing damage taken; Dark Iron Summoners: interrupt Fireballs; Dark Iron Engineers: dynamite AoE; Sap/Polymorph strong." },
             { "Plunder", "Golem encounter; clear nearby trash." },
-            { "Durgen Dirgehammer", "Final boss; head for An Ancient Grudge quest." },
+            { "Durgen Dirgehammer", "Final boss; his head is for Old Ironforge Incursion." },
         },
-        quests = { "The Restless Dead", "Important Heirlooms", "An Ancient Grudge (needs Dark Iron Map from Ironband's)", "Old Ironforge Incursion", "The Treaty of Understanding" },
+        quests = { "The Restless Dead", "Important Heirlooms", "An Ancient Grudge", "Old Ironforge Incursion (needs Underground Map first: the Dark Iron Map to Earthseer Farsen)", "The Treaty of Understanding" },
         status = "complete",
     },
     {
@@ -347,7 +347,7 @@ ns.Dungeons = {
             { "Var'Taka", "Brinescale naga; a quest asks for his death (The Only Good Brinescale...)." },
             { "Primeval Elemental", "Drops Heart of the Primeval, a caster trinket reported to drop often." },
             { "Captain Dreadrise", "Saltseer pirate captain; kill 3 Saltseer Coroners nearby for The Saltseer Captain." },
-            { "Deathless Marrow", "Drops the Ancient Gurubashi Idol for the idol quests." },
+            { "Deathless Marrow", "Its adds make it take more damage. Drops the Ancient Gurubashi Idol for the idol quests." },
             { "Min'loth the Serpent", "Last boss. Drops Maw of Min'loth, a tank shield." },
         },
         quests = { "The Drowned City", "Take Two With Water", "Magics of the Drowned City", "Shady Saltseers", "The Saltseer Captain",
@@ -364,7 +364,7 @@ ns.Dungeons = {
             { "War Handler Ashka", "Worg handler; expect worgs with him." },
             { "Nar'gurk", "Drops the Tome of Twilight and Krol'dok Warplate (the Krol'dok Battlegear set)." },
             { "Bossman Toof", "Mechanics not published yet." },
-            { "Overlord Mugg", "Last boss. Drops the Eye of Mugg for the quest, and Emblem of Slamming (trinket)." },
+            { "Overlord Mugg", "Last boss. Jumps and slams: spread out. Drops the Eye of Mugg for the quest, and Emblem of Slamming (trinket)." },
         },
         quests = { "Krol'dok Moulding", "A Token of Vengeance", "Twilight Mementos", "Krol'dok No More!", "Tome of Twilight", "Eye of Mugg", "Vengeance of the Highborne" },
         notes = { "Twilight's Hammer ogre fortress", "Do the Riverglades quests first: they lead here", "Bridge wave encounter with a hole in the bridge" },
