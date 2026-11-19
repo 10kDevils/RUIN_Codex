@@ -465,7 +465,7 @@ end
 -- and covering it; returns the source used and a function to fit it again
 local function raceScenery(holder)
     local race = UnitRace and select(2, UnitRace("player"))
-    if type(race) ~= "string" then return "none" end
+    if type(race) ~= "string" then return "none", function() end end
     local inner = CreateFrame("Frame", nil, holder)
     inner:SetPoint("CENTER")
     local aspect                     -- width / height of the picture
@@ -534,92 +534,103 @@ local function raceScenery(holder)
         for _, t in ipairs(inner.tiles or {}) do t:SetSize(iw * t.share[1], ih * t.share[2]) end
     end
     fit()
-    return src, fit
+    return src, fit, inner
 end
 
--- The scene: the scenery across the whole space between the banner and the
--- bottom, the slots over it. Darker toward the sides where their words sit,
--- lit from below in Codex's color in the middle, and fading into the page
--- at every edge, so it has no box around it.
+-- The scene behind the character. Layers, bottom to top: the scenery
+-- (pushed far back: no color, dim, tinted toward Codex's color), a shade
+-- over it with dark panels where the slots' words sit, light rising from the
+-- floor, and a floor under the character's feet: a shadow, a pool of light
+-- and a gold line. It fades into the page at every edge, so there's no box.
+local FEET = 0.19        -- a model's feet stand this far up its frame
 local function buildStage(page, ac)
     local scene = CreateFrame("Frame", nil, page)
     local r, g, b = ac[1], ac[2], ac[3]
+    local bg = (W.PALETTE and W.PALETTE.bg) or { 0.03, 0.04, 0.06 }
+
     local clip = CreateFrame("Frame", nil, scene)
     clip:SetAllPoints()
     if clip.SetClipsChildren then clip:SetClipsChildren(true) end
-    local src, fit = raceScenery(clip)
+    local src, fit, inner = raceScenery(clip)
     G.scenery = src
-    clip:SetAlpha(0.75)
+    if inner then
+        for _, t in ipairs({ inner:GetRegions() }) do
+            if t.SetDesaturated then t:SetDesaturated(true) end
+            if t.SetVertexColor then t:SetVertexColor(0.55 + r * 0.25, 0.55 + g * 0.25, 0.55 + b * 0.25) end
+        end
+    end
+    clip:SetAlpha(0.42)
     scene:SetScript("OnSizeChanged", function() fit() end)
 
-    local bg = (W.PALETTE and W.PALETTE.bg) or { 0.03, 0.04, 0.06 }
-    local function layer(sub)
-        local t = scene:CreateTexture(nil, "ARTWORK", nil, sub)
-        return t
-    end
-    -- without scenery: a deep wash in Codex's color
-    if src == "none" then
-        local base = layer(-8)
-        base:SetAllPoints()
-        gradient(base, "VERTICAL", { r * 0.30, g * 0.30, b * 0.30, 0.9 }, { r * 0.10, g * 0.10, b * 0.10, 0.6 })
-    else
-        local tint = layer(-8)
-        tint:SetAllPoints()
-        gradient(tint, "VERTICAL", { r * 0.30, g * 0.30, b * 0.30, 0.35 }, { 0, 0, 0, 0.35 })
-    end
-    -- light rising from the floor in the middle
-    local rise = layer(-7)
-    rise:SetPoint("BOTTOM", scene, "BOTTOM", 0, 0)
-    rise:SetSize(420, 260)
-    gradient(rise, "VERTICAL", { r, g, b, 0.30 }, { r, g, b, 0 })
-    local riseL = layer(-7)
-    riseL:SetPoint("BOTTOMRIGHT", rise, "BOTTOMLEFT")
-    riseL:SetPoint("TOPRIGHT", rise, "TOPLEFT")
-    riseL:SetWidth(140)
-    gradient(riseL, "HORIZONTAL", { r, g, b, 0 }, { r, g, b, 0.12 })
-    local riseR = layer(-7)
-    riseR:SetPoint("BOTTOMLEFT", rise, "BOTTOMRIGHT")
-    riseR:SetPoint("TOPLEFT", rise, "TOPRIGHT")
-    riseR:SetWidth(140)
-    gradient(riseR, "HORIZONTAL", { r, g, b, 0.12 }, { r, g, b, 0 })
-    -- the sides, where the slots' words are: dark, so they read easily
+    -- everything drawn over the scenery lives on its own frame above it
+    local shade = CreateFrame("Frame", nil, scene)
+    shade:SetAllPoints()
+    shade:SetFrameLevel(clip:GetFrameLevel() + 1)
+    scene.shade = shade
+    local function layer(sub) return shade:CreateTexture(nil, "ARTWORK", nil, sub) end
+
+    -- a dark veil over it all, deeper toward the top
+    local veil = layer(-8)
+    veil:SetAllPoints()
+    gradient(veil, "VERTICAL", { bg[1], bg[2], bg[3], 0.45 }, { bg[1], bg[2], bg[3], 0.80 })
+    -- the columns: solid where the words are, fading toward the middle
+    local PANEL, FADE = 250, 70
     for _, side in ipairs({ "LEFT", "RIGHT" }) do
-        local v = layer(-6)
-        v:SetPoint("TOP" .. side)
-        v:SetPoint("BOTTOM" .. side)
-        v:SetWidth(300)
-        local dark, clear = { bg[1], bg[2], bg[3], 0.92 }, { bg[1], bg[2], bg[3], 0 }
-        if side == "LEFT" then gradient(v, "HORIZONTAL", dark, clear) else gradient(v, "HORIZONTAL", clear, dark) end
+        local solidPanel = layer(-7)
+        solidPanel:SetPoint("TOP" .. side)
+        solidPanel:SetPoint("BOTTOM" .. side)
+        solidPanel:SetWidth(PANEL)
+        solidPanel:SetColorTexture(bg[1], bg[2], bg[3], 0.94)
+        local f = layer(-7)
+        f:SetPoint("TOP" .. side, solidPanel, "TOP" .. (side == "LEFT" and "RIGHT" or "LEFT"))
+        f:SetPoint("BOTTOM" .. side, solidPanel, "BOTTOM" .. (side == "LEFT" and "RIGHT" or "LEFT"))
+        f:SetWidth(FADE)
+        local dark, clear = { bg[1], bg[2], bg[3], 0.94 }, { bg[1], bg[2], bg[3], 0 }
+        if side == "LEFT" then gradient(f, "HORIZONTAL", dark, clear) else gradient(f, "HORIZONTAL", clear, dark) end
     end
     -- fading into the page above and below
-    local top = layer(-5)
+    local top = layer(-6)
     top:SetPoint("TOPLEFT")
     top:SetPoint("TOPRIGHT")
-    top:SetHeight(60)
+    top:SetHeight(70)
     gradient(top, "VERTICAL", { bg[1], bg[2], bg[3], 0 }, { bg[1], bg[2], bg[3], 1 })
-    local bottom = layer(-5)
+    local bottom = layer(-6)
     bottom:SetPoint("BOTTOMLEFT")
     bottom:SetPoint("BOTTOMRIGHT")
-    bottom:SetHeight(50)
+    bottom:SetHeight(60)
     gradient(bottom, "VERTICAL", { bg[1], bg[2], bg[3], 1 }, { bg[1], bg[2], bg[3], 0 })
 
-    -- the floor: a soft shadow and a glow under the feet, and a line of light
-    local FLOOR = 74
+    -- the floor sits where the character's feet are (placed by G.Build)
+    local feet = CreateFrame("Frame", nil, shade)
+    feet:SetSize(1, 1)
+    scene.feet = feet
+    -- light rising from the floor
+    local rise = layer(-5)
+    rise:SetPoint("BOTTOM", feet, "CENTER", 0, -4)
+    rise:SetSize(260, 240)
+    gradient(rise, "VERTICAL", { r, g, b, 0.22 }, { r, g, b, 0 })
     local MASK = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask"
-    local pool = scene:CreateTexture(nil, "ARTWORK", nil, -4)
+    -- a pool of light on the ground, and the floor darkening beyond it
+    local ground = layer(-4)
+    ground:SetPoint("TOPLEFT", shade, "TOPLEFT", PANEL, 0)
+    ground:SetPoint("TOPRIGHT", shade, "TOPRIGHT", -PANEL, 0)
+    ground:SetPoint("TOP", feet, "CENTER", 0, 0)
+    ground:SetPoint("BOTTOM", shade, "BOTTOM", 0, 0)
+    gradient(ground, "VERTICAL", { bg[1], bg[2], bg[3], 0.85 }, { bg[1], bg[2], bg[3], 0.35 })
+    local pool = layer(-3)
     pool:SetTexture(MASK)
-    pool:SetSize(240, 46)
-    pool:SetPoint("CENTER", scene, "BOTTOM", 0, FLOOR)
-    pool:SetVertexColor(r, g, b, 0.22)
+    pool:SetSize(230, 44)
+    pool:SetPoint("CENTER", feet, "CENTER", 0, -2)
+    pool:SetVertexColor(r, g, b, 0.32)
     pool:SetBlendMode("ADD")
-    local shadow = scene:CreateTexture(nil, "ARTWORK", nil, -3)
+    local shadow = layer(-2)
     shadow:SetTexture(MASK)
-    shadow:SetSize(110, 16)
-    shadow:SetPoint("CENTER", scene, "BOTTOM", 0, FLOOR + 1)
-    shadow:SetVertexColor(0, 0, 0, 0.5)
-    local floorLine = flourish(scene, 300, ac)
-    floorLine:SetPoint("CENTER", scene, "BOTTOM", 0, FLOOR - 12)
-    scene.floor = FLOOR
+    shadow:SetSize(96, 18)
+    shadow:SetPoint("CENTER", feet, "CENTER", 0, 0)
+    shadow:SetVertexColor(0, 0, 0, 0.75)
+    local floorLine = flourish(shade, 280, ac)
+    floorLine:SetPoint("CENTER", feet, "CENTER", 0, -1)
+    floorLine:SetAlpha(0.8)
     return scene
 end
 
@@ -651,6 +662,18 @@ local function slotWidget(parent, slot, side, ac)
     -- the upgrade badge on the icon's corner
     holder.badge = holder:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
     holder.badge:SetPoint("BOTTOMRIGHT", holder, "BOTTOMRIGHT", -2, 3)
+    -- a check on the corner when the piece you wear is already your best
+    holder.bis = holder:CreateTexture(nil, "OVERLAY", nil, 4)
+    holder.bis:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
+    holder.bis:SetSize(18, 18)
+    holder.bis:SetPoint("TOPRIGHT", holder, "TOPRIGHT", 4, 4)
+    holder.bis:Hide()
+    holder.bisRing = holder:CreateTexture(nil, "OVERLAY", nil, 3)
+    holder.bisRing:SetTexture("Interface\\CHARACTERFRAME\\TempPortraitAlphaMask")
+    holder.bisRing:SetVertexColor(0, 0, 0, 0.75)
+    holder.bisRing:SetSize(20, 20)
+    holder.bisRing:SetPoint("CENTER", holder.bis, "CENTER")
+    holder.bisRing:Hide()
     -- a band of light behind the words, fading away from the icon
     local strip = parent:CreateTexture(nil, "BACKGROUND", nil, 1)
     strip:SetHeight(42)
@@ -760,11 +783,17 @@ local function upgradeBadge(slot, e)
     return C.good .. "+" .. pct .. "%|r"
 end
 
+local function setBisMark(b, on)
+    b.bis:SetShown(on and true or false)
+    b.bisRing:SetShown(on and true or false)
+end
+
 -- "Best in slot" view
 local function paintBest(b, res)
     local e = res and res.slots[b.slot]
     b.entry = e
     showItem(b, e)
+    setBisMark(b, e and isWorn(e.id))
     b.tipTitle, b.tipLines = nil, nil
     if e then
         b.badge:SetText(upgradeBadge(b.slot, e))
@@ -795,6 +824,7 @@ local function paintWorn(b, res)
     b.entry = e
     showItem(b, e)
     b.badge:SetText("")
+    setBisMark(b, e and top and (top.id == e.id or isWorn(top.id)))
     b.tipTitle = "RUIN Codex"
     b.tipLines = top and { "Best in slot: " .. top.name, table.concat(top.src or {}, "; ") } or nil
     if not e then
@@ -934,9 +964,16 @@ function G.Build(page)
     -- the character, in the middle between the columns
     local ok, m = pcall(CreateFrame, "DressUpModel", nil, page)
     if ok and m then
-        m:SetPoint("TOPLEFT", scene, "TOPLEFT", 268, -16)
-        m:SetPoint("BOTTOMRIGHT", scene, "BOTTOMRIGHT", -268, scene.floor - 8)
-        m:SetFrameLevel(scene:GetFrameLevel() + 2)
+        m:SetPoint("TOPLEFT", scene, "TOPLEFT", 262, -6)
+        m:SetPoint("BOTTOMRIGHT", scene, "BOTTOMRIGHT", -262, 30)
+        m:SetFrameLevel(scene.shade:GetFrameLevel() + 1)
+        -- the floor under the feet, wherever the frame's size puts them
+        local function placeFeet()
+            scene.feet:ClearAllPoints()
+            scene.feet:SetPoint("CENTER", m, "BOTTOM", 0, (m:GetHeight() or 0) * FEET)
+        end
+        placeFeet()
+        m:HookScript("OnSizeChanged", placeFeet)
         if m.SetUnit then pcall(m.SetUnit, m, "player") end
         m:SetScript("OnShow", function(self)
             if self.SetUnit then pcall(self.SetUnit, self, "player") end
@@ -982,7 +1019,7 @@ function G.Build(page)
     -- the ranged slot under the character, where the client has one
     if G.HasRangedSlot() then
         local b = slotWidget(page, 18, "bottom", ac)
-        b:SetPoint("BOTTOM", page, "BOTTOM", -84, 8)
+        b:SetPoint("BOTTOM", page, "BOTTOM", -84, 4)
         b:SetFrameLevel(scene:GetFrameLevel() + 4)
         ui.slots[18] = b
     end
