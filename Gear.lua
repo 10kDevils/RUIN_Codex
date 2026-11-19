@@ -583,15 +583,17 @@ local function slotWidget(parent, slot, side, ac)
     end
     holder.cap:SetText(((SLOT_INFO[slot] and SLOT_INFO[slot][2]) or ""):upper())
     holder.cap:SetTextColor(GOLD[1], GOLD[2], GOLD[3], 0.75)
+    -- the three lines sit centred in the band: the item's name on the
+    -- middle, its slot just above and where it comes from just below
     if side == "right" then
-        holder.cap:SetPoint("TOPRIGHT", holder, "TOPLEFT", -8, 1)
-        holder.name:SetPoint("TOPRIGHT", holder.cap, "BOTTOMRIGHT", 0, -1)
-        holder.sub:SetPoint("TOPRIGHT", holder.name, "BOTTOMRIGHT", 0, -1)
+        holder.name:SetPoint("RIGHT", holder, "LEFT", -11, 1)
+        holder.cap:SetPoint("BOTTOMRIGHT", holder.name, "TOPRIGHT", 0, 2)
+        holder.sub:SetPoint("TOPRIGHT", holder.name, "BOTTOMRIGHT", 0, -2)
         for _, fs in ipairs({ holder.cap, holder.name, holder.sub }) do fs:SetJustifyH("RIGHT") end
     else
-        holder.cap:SetPoint("TOPLEFT", holder, "TOPRIGHT", 8, 1)
-        holder.name:SetPoint("TOPLEFT", holder.cap, "BOTTOMLEFT", 0, -1)
-        holder.sub:SetPoint("TOPLEFT", holder.name, "BOTTOMLEFT", 0, -1)
+        holder.name:SetPoint("LEFT", holder, "RIGHT", 11, 1)
+        holder.cap:SetPoint("BOTTOMLEFT", holder.name, "TOPLEFT", 0, 2)
+        holder.sub:SetPoint("TOPLEFT", holder.name, "BOTTOMLEFT", 0, -2)
         for _, fs in ipairs({ holder.cap, holder.name, holder.sub }) do fs:SetJustifyH("LEFT") end
     end
     holder:SetScript("OnEnter", function(self)
@@ -788,25 +790,26 @@ local function layoutSlots()
     local h = page and page:GetHeight() or 0
     local row = h > 0 and math.floor((h - TOP - 6) / 8) or 46
     row = math.max(ROW_MIN, math.min(ROW_MAX, row))
-    local size = math.min(42, row - 4)
+    local size = math.min(42, row - 6)
+    local band = math.min(size + 8, row - 3)
     for i, slot in ipairs(LEFT) do
         local b = ui.slots[slot]
         b:ClearAllPoints()
         b:SetPoint("TOPLEFT", page, "TOPLEFT", 12, -TOP - (i - 1) * row)
         b:SetSize(size, size)
-        b.strip:SetHeight(size)
+        b.strip:SetHeight(band)
     end
     for i, slot in ipairs(RIGHT) do
         local b = ui.slots[slot]
         b:ClearAllPoints()
         b:SetPoint("TOPRIGHT", page, "TOPRIGHT", -12, -TOP - (i - 1) * row)
         b:SetSize(size, size)
-        b.strip:SetHeight(size)
+        b.strip:SetHeight(band)
     end
     local rb = ui.slots[18]
     if rb then
         rb:SetSize(size, size)
-        rb.strip:SetHeight(size)
+        rb.strip:SetHeight(band)
     end
 end
 
