@@ -2,6 +2,7 @@
 -- Your character in the middle, and for every slot the best piece you can
 -- get and wear at your level: dungeon and raid loot from the Journal's lists
 -- (boss drops, trash, dungeon quest rewards Ruinous Forever Planner knows),
+-- weapons and armour from quests you can still do (QuestData/QuestRewards.lua),
 -- plus what you're wearing now. An item counts when your class can use it
 -- and its required level is yours or lower. Pieces are scored by Ruinous
 -- Forever Planner when it's installed, else by Codex's stat weights for your
@@ -20,6 +21,7 @@ end
 
 local G = {}
 ns.Gear = G
+G.QUEST_WINDOW = 8         -- quest rewards from quests up to this many levels below you
 
 local function M() return ns.Codex end
 
@@ -156,6 +158,36 @@ local function gather(level)
                 if it.questID then add(it.id, "Quest reward, " .. where)
                 elseif it.boss then add(it.id, tostring(it.boss) .. ", " .. where)
                 else add(it.id, where) end
+            end
+        end
+    end
+    -- quest rewards you can still earn: a quest you can pick up now (your
+    -- side, your class, not done yet) up to QUEST_WINDOW levels below you,
+    -- whose reward your class can use. Older quests' gear is long outgrown.
+    local QR, QQ = ns.QuestRewards, ns.QuestRewardQuests
+    if QR and QQ then
+        local cm = M()
+        local fac = UnitFactionGroup and UnitFactionGroup("player")
+        local side = fac == "Alliance" and 1 or fac == "Horde" and 2 or 0
+        local classId = UnitClass and select(3, UnitClass("player"))
+        local cbit = classId and bit and bit.lshift(1, classId - 1)
+        local isDone = (C_QuestLog and C_QuestLog.IsQuestFlaggedCompleted) or rawget(_G, "IsQuestFlaggedCompleted")
+        local areaName = C_Map and C_Map.GetAreaInfo
+        for id, r in pairs(QR) do
+            if not (cm and cm.CanUseKind) or cm.CanUseKind(r[2], r[3]) ~= false then
+                for k = 4, #r do
+                    local qid = r[k]
+                    local q = QQ[qid]
+                    local ql = q and (q[2] > 0 and q[2] or q[3]) or 0
+                    if q and (q[1] ~= "") and (q[4] == 0 or q[4] == side)
+                        and (q[5] == 0 or not cbit or bit.band(q[5], cbit) ~= 0)
+                        and q[3] <= level and ql >= level - G.QUEST_WINDOW and (r[1] == 0 or r[1] <= level)
+                        and not (isDone and isDone(qid)) then
+                        local zone = q[6] and q[6] > 0 and areaName and areaName(q[6])
+                        add(id, "Quest reward: " .. q[1] .. (zone and (", " .. zone) or ""))
+                        break
+                    end
+                end
             end
         end
     end

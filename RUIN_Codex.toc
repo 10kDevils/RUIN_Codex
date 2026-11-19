@@ -13,6 +13,7 @@ Dungeons.lua
 Loot.lua
 LootSample.lua
 LootForever.lua
+QuestData\QuestRewards.lua
 Weights.lua
 ItemStats.lua
 Codex.lua

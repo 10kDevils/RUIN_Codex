@@ -1569,6 +1569,28 @@ local WEAPONS = {
     PRIEST = { 4, 10, 15, 19 }, SHAMAN = { 0, 1, 4, 5, 10, 13, 15 }, MAGE = { 7, 10, 15, 19 },
     WARLOCK = { 7, 10, 15, 19 }, DRUID = { 4, 5, 10, 13, 15 },
 }
+-- The same answer from an item's class and subclass alone, before the game
+-- has sent the item (cloaks, jewellery and off-hands are subclass 0: yes).
+function M.CanUseKind(classID, subID)
+    local cls = myClass()
+    if not (classID and cls) then return nil end
+    if classID == 4 then
+        if not subID or subID == 0 then return true end
+        if subID >= 1 and subID <= 4 then
+            local max = ARMOR_MAX[cls] or 1
+            if (UnitLevel and (UnitLevel("player") or 60) < 40) and ARMOR_BEFORE_40[cls] then max = ARMOR_BEFORE_40[cls] end
+            return subID <= max
+        end
+        if subID == 6 then return SHIELDS[cls] == true end
+        if RELIC[subID] then return RELIC[subID] == cls end
+        return true
+    elseif classID == 2 then
+        for _, w in ipairs(WEAPONS[cls] or {}) do if w == subID then return true end end
+        return false
+    end
+    return false
+end
+
 local function canUse(id)
     local classID, subID, loc = itemFacts(id)
     local cls = myClass()
