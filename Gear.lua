@@ -451,9 +451,9 @@ function G.Build(page)
     ui.info:SetPoint("RIGHT", page, "RIGHT", -190, 0)
     ui.info:SetJustifyH("LEFT")
     ui.previewCycle = W.Cycle(page, 170, { "Wearing best in slot", "Your gear" }, function() return ui.preview end,
-        function(v) ui.preview = v; dressModel() end)
+        function(v) ui.preview = v; G.Paint() end)
     ui.previewCycle:SetPoint("TOPRIGHT", -10, -4)
-    ui.previewCycle.tip = "What the character in the middle wears: your best pieces, or what you have on now."
+    ui.previewCycle.tip = "Show your best pieces, or what you have on now (with the best for each slot beside it)."
 
     ui.slots = {}
     for i, slot in ipairs(LEFT) do
@@ -504,6 +504,35 @@ function G.Build(page)
     if ui.model then ui.hint:SetPoint("BOTTOM", ui.model, "BOTTOM", 0, -14) end
 end
 
+-- what you wear in a slot, in the same shape as a best-in-slot entry
+local function wornEntry(slot)
+    local link = GetInventoryItemLink and GetInventoryItemLink("player", slot)
+    local id = link and tonumber(link:match("item:(%d+)"))
+    if not id then return nil end
+    local name, _, quality = GetItemInfo(link)
+    return { id = id, link = link, name = name or (link:match("%[(.-)%]")) or "item", quality = quality or 1, src = { "Equipped" }, worn = true }
+end
+
+-- "Your gear": each slot shows what you wear, and whether it's the best
+local function paintWorn(b, res)
+    local e = wornEntry(b.slot)
+    local top = res and res.slots[b.slot]
+    paintSlot(b, e, res)
+    if not e then
+        local label = SLOT_INFO[b.slot] and SLOT_INFO[b.slot][2] or ""
+        b.name:SetText(C.dim .. label .. "|r")
+        b.sub:SetText(top and (C.dim .. "Empty. Best: |r" .. qualityColor(top.quality) .. top.name .. "|r") or (C.dim .. "Empty|r"))
+        return
+    end
+    if top and top.id == e.id then
+        b.sub:SetText(C.good .. "Best in slot|r")
+    elseif top then
+        b.sub:SetText(C.dim .. "Best: |r" .. qualityColor(top.quality) .. top.name .. "|r")
+    else
+        b.sub:SetText(C.good .. "Equipped|r")
+    end
+end
+
 local function paint()
     if not ui.page then return end
     local res = state.result
@@ -518,7 +547,10 @@ local function paint()
         end
         ui.info:SetText(text)
     end
-    for slot, b in pairs(ui.slots or {}) do paintSlot(b, res and res.slots[slot] or nil, res) end
+    local mine = ui.preview == "Your gear"
+    for slot, b in pairs(ui.slots or {}) do
+        if mine then paintWorn(b, res) else paintSlot(b, res and res.slots[slot] or nil, res) end
+    end
     dressModel()
 end
 G.Paint = paint
