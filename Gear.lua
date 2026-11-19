@@ -443,6 +443,85 @@ local function dressModel(force)
     end
 end
 
+-- A color gradient on a texture (newer clients take colors, older alphas).
+-- Vertical: from the bottom color to the top one; horizontal: left to right.
+local function gradient(t, orient, a, b)
+    t:SetColorTexture(1, 1, 1, 1)
+    if t.SetGradient and CreateColor then
+        local ok = pcall(t.SetGradient, t, orient, CreateColor(a[1], a[2], a[3], a[4]), CreateColor(b[1], b[2], b[3], b[4]))
+        if ok then return end
+    end
+    if t.SetGradientAlpha then
+        t:SetGradientAlpha(orient, a[1], a[2], a[3], a[4], b[1], b[2], b[3], b[4])
+    else
+        t:SetColorTexture(a[1], a[2], a[3], (a[4] + b[4]) / 2)
+    end
+end
+
+-- The stage behind the character: a dark panel lit from below in Codex's
+-- color, darker toward the top and the sides, with a soft glowing floor line.
+local function buildStage(page)
+    local stage = CreateFrame("Frame", nil, page)
+    stage:SetPoint("TOPLEFT", page, "TOPLEFT", 250, -36)
+    stage:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -250, 58)
+    W.Skin(stage, "bg", 0.9, "line")
+    local ok, scheme = pcall(W.SchemeOf, page)
+    local ac = (ok and scheme and scheme.accent) or W.PALETTE.glow or { 0.6, 0.45, 0.9 }
+    local r, g, b = ac[1], ac[2], ac[3]
+    local function layer(sub)
+        local t = stage:CreateTexture(nil, "BACKGROUND", nil, sub)
+        return t
+    end
+    -- light rising from the floor
+    local rise = layer(-5)
+    rise:SetPoint("BOTTOMLEFT", 1, 1)
+    rise:SetPoint("BOTTOMRIGHT", -1, 1)
+    rise:SetPoint("TOP", stage, "CENTER", 0, 40)
+    gradient(rise, "VERTICAL", { r, g, b, 0.34 }, { r, g, b, 0 })
+    -- a faint wash over the whole stage
+    local wash = layer(-6)
+    wash:SetPoint("TOPLEFT", 1, -1)
+    wash:SetPoint("BOTTOMRIGHT", -1, 1)
+    gradient(wash, "VERTICAL", { r * 0.35, g * 0.35, b * 0.35, 0.5 }, { 0, 0, 0, 0 })
+    -- darker toward the top
+    local top = layer(-4)
+    top:SetPoint("TOPLEFT", 1, -1)
+    top:SetPoint("TOPRIGHT", -1, -1)
+    top:SetPoint("BOTTOM", stage, "CENTER", 0, 30)
+    gradient(top, "VERTICAL", { 0, 0, 0, 0 }, { 0, 0, 0, 0.45 })
+    -- and toward the sides
+    local left = layer(-3)
+    left:SetPoint("TOPLEFT", 1, -1)
+    left:SetPoint("BOTTOMLEFT", 1, 1)
+    left:SetWidth(46)
+    gradient(left, "HORIZONTAL", { 0, 0, 0, 0.5 }, { 0, 0, 0, 0 })
+    local right = layer(-3)
+    right:SetPoint("TOPRIGHT", -1, -1)
+    right:SetPoint("BOTTOMRIGHT", -1, 1)
+    right:SetWidth(46)
+    gradient(right, "HORIZONTAL", { 0, 0, 0, 0 }, { 0, 0, 0, 0.5 })
+    -- the floor: a line of light, brightest under the character
+    local floorY = 34
+    local fl = stage:CreateTexture(nil, "ARTWORK")
+    fl:SetHeight(1)
+    fl:SetPoint("BOTTOMLEFT", stage, "BOTTOM", -120, floorY)
+    fl:SetPoint("BOTTOMRIGHT", stage, "BOTTOM", 0, floorY)
+    gradient(fl, "HORIZONTAL", { r, g, b, 0 }, { r, g, b, 0.9 })
+    local fr = stage:CreateTexture(nil, "ARTWORK")
+    fr:SetHeight(1)
+    fr:SetPoint("BOTTOMLEFT", stage, "BOTTOM", 0, floorY)
+    fr:SetPoint("BOTTOMRIGHT", stage, "BOTTOM", 120, floorY)
+    gradient(fr, "HORIZONTAL", { r, g, b, 0.9 }, { r, g, b, 0 })
+    -- a soft band of light just above the floor
+    local band = stage:CreateTexture(nil, "BACKGROUND", nil, -2)
+    band:SetPoint("BOTTOMLEFT", stage, "BOTTOM", -110, floorY)
+    band:SetPoint("BOTTOMRIGHT", stage, "BOTTOM", 110, floorY)
+    band:SetHeight(28)
+    gradient(band, "VERTICAL", { r, g, b, 0.22 }, { r, g, b, 0 })
+    ui.stage = stage
+    return stage
+end
+
 function G.Build(page)
     ui.page = page
     ui.preview = "Wearing best in slot"
@@ -474,10 +553,12 @@ function G.Build(page)
         ui.slots[slot] = b
     end
 
+    local stage = buildStage(page)
     local ok, m = pcall(CreateFrame, "DressUpModel", nil, page)
     if ok and m then
-        m:SetPoint("TOPLEFT", page, "TOPLEFT", 250, -36)
-        m:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -250, 58)
+        m:SetPoint("TOPLEFT", stage, "TOPLEFT", 2, -2)
+        m:SetPoint("BOTTOMRIGHT", stage, "BOTTOMRIGHT", -2, 2)
+        m:SetFrameLevel(stage:GetFrameLevel() + 2)
         if m.SetUnit then pcall(m.SetUnit, m, "player") end
         -- shown again (the tab, the app): the game resets the model, so dress it again
         m:SetScript("OnShow", function(self)
@@ -501,7 +582,7 @@ function G.Build(page)
         ui.model = m
     end
     ui.hint = W.Label(page, C.dim .. "Drag to turn. Click a piece to link it.|r", "GameFontHighlightSmall")
-    if ui.model then ui.hint:SetPoint("BOTTOM", ui.model, "BOTTOM", 0, -14) end
+    if ui.stage then ui.hint:SetPoint("BOTTOM", ui.stage, "BOTTOM", 0, 8) end
 end
 
 -- what you wear in a slot, in the same shape as a best-in-slot entry
