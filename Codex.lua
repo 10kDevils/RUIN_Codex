@@ -2242,11 +2242,11 @@ local function refreshJournal()
         or (#runs > 0 and (C.good .. "Upcoming: |r" .. table.concat(runs, ",  ")) or (C.dim .. "No run scheduled yet.|r")))
 end
 
-local TAB_JOURNAL, TAB_MACROS, TAB_BIS = 1, 2, 3      -- the Journal comes first
+local TAB_BIS, TAB_JOURNAL, TAB_MACROS = 1, 2, 3      -- Best in Slot comes first
 
 local function buildPage(panel)
     ui.panel = panel
-    ui.tabs = W.SubTabs(panel, { "Journal", "Macros", "Best in Slot" }, function() refreshPage() end)
+    ui.tabs = W.SubTabs(panel, { "Best in Slot", "Journal", "Macros" }, function() refreshPage() end)
     buildJournal(ui.tabs.pages[TAB_JOURNAL])
     if ns.Macros then ns.Macros.Build(ui.tabs.pages[TAB_MACROS]) end
     if ns.Gear then ns.Gear.Build(ui.tabs.pages[TAB_BIS]) end
@@ -2263,7 +2263,7 @@ local function buildPage(panel)
         end
     end
     panel:SetScript("OnShow", function() refreshPage() end)
-    ui.tabs:Select(TAB_JOURNAL)
+    ui.tabs:Select(TAB_BIS)
 end
 
 ---------------------------------------------------------------------------
@@ -2402,7 +2402,7 @@ SLASH_RUINCODEX1 = "/codex"
 SlashCmdList.RUINCODEX = function(msg)
     msg = (msg or ""):lower()
     local cmd, rest = msg:match("^(%S*)%s*(.*)$")
-    local tab = TAB_JOURNAL
+    local tab = TAB_BIS
     if cmd == "journal" or cmd == "dungeons" then tab = TAB_JOURNAL; if cmd == "dungeons" then ui.jmode = "Dungeons" end
     elseif cmd == "raids" or cmd == "raid" then tab = TAB_JOURNAL; ui.jmode = "Raids"
     elseif cmd == "macros" or cmd == "macro" then tab = TAB_MACROS; if ns.Macros then ns.Macros.SetMode("macros") end
