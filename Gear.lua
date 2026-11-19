@@ -35,7 +35,7 @@ local SLOT_INFO = {
     [13] = { "Trinket0Slot", "Trinket" }, [14] = { "Trinket1Slot", "Trinket" },
     [16] = { "MainHandSlot", "Main Hand" }, [17] = { "SecondaryHandSlot", "Off Hand" }, [18] = { "RangedSlot", "Ranged" },
 }
-local LEFT = { 1, 2, 3, 15, 5, 9 }
+local LEFT = { 1, 2, 3, 15, 5, 9, 16, 17 }
 local RIGHT = { 10, 6, 7, 8, 11, 12, 13, 14 }
 G.LEFT, G.RIGHT = LEFT, RIGHT
 
@@ -447,96 +447,180 @@ local function accentOf(page)
     return (ok and scheme and scheme.accent) or W.PALETTE.glow or { 0.62, 0.46, 0.92 }
 end
 
-local function raceScenery(tex)
-    if not (UnitRace and tex.SetAtlas) then return false end
-    local _, race = UnitRace("player")
-    if type(race) ~= "string" then return false end
-    local name = "dressingroom-background-" .. race:lower()
-    local exists = true
-    if C_Texture and C_Texture.GetAtlasInfo then
-        local ok, info = pcall(C_Texture.GetAtlasInfo, name)
-        exists = ok and info ~= nil
+-- Your race's dressing room scenery. Clients keep it in different places:
+-- a modern atlas, a modern single picture, or the classic four tiles. Each
+-- is tried in turn; G.scenery says which one showed ("none" when this client
+-- has none, and the stage is lit in Codex's color alone).
+local function fileShows(tex, path)
+    local ok, ret = pcall(tex.SetTexture, tex, path)
+    if not ok or ret == false then return false end
+    if tex.GetTextureFileID then
+        local ok2, id = pcall(tex.GetTextureFileID, tex)
+        if ok2 and (id == nil or id == 0) then return false end
     end
-    if not exists then return false end
-    return (pcall(tex.SetAtlas, tex, name))
+    return true
 end
 
+-- fills holder (a frame that clips) with the scenery, kept in proportion
+-- and covering it; returns the source used and a function to fit it again
+local function raceScenery(holder)
+    local race = UnitRace and select(2, UnitRace("player"))
+    if type(race) ~= "string" then return "none" end
+    local inner = CreateFrame("Frame", nil, holder)
+    inner:SetPoint("CENTER")
+    local aspect                     -- width / height of the picture
+    -- 1. the modern atlas
+    local name = "dressingroom-background-" .. race:lower()
+    local info
+    if C_Texture and C_Texture.GetAtlasInfo then
+        local ok, i = pcall(C_Texture.GetAtlasInfo, name)
+        info = ok and i or nil
+    end
+    local src = "none"
+    if info then
+        local t = inner:CreateTexture(nil, "BACKGROUND")
+        t:SetAllPoints()
+        if pcall(t.SetAtlas, t, name) then
+            src = "atlas " .. name
+            aspect = (info.width and info.height and info.height > 0) and (info.width / info.height) or (4 / 3)
+        end
+    end
+    -- 2. the modern single picture
+    if src == "none" then
+        local t = inner:CreateTexture(nil, "BACKGROUND")
+        t:SetAllPoints()
+        for _, path in ipairs({ "Interface\\DressUpFrame\\DressingRoom" .. race, "Interface\\DressUpFrame\\DressUpBackground-" .. race }) do
+            if fileShows(t, path) then src = path; aspect = 4 / 3; break end
+        end
+        if src == "none" then t:Hide() end
+    end
+    -- 3. the classic four tiles (318 x 383 together)
+    if src == "none" then
+        local base = "Interface\\DressUpFrame\\DressUpBackground-" .. race
+        local tiles = {
+            { 1, "TOPLEFT", 256 / 318, 255 / 383, 0, 1, 0, 255 / 256 },
+            { 2, "TOPRIGHT", 62 / 318, 255 / 383, 0, 62 / 64, 0, 255 / 256 },
+            { 3, "BOTTOMLEFT", 256 / 318, 128 / 383, 0, 1, 0, 1 },
+            { 4, "BOTTOMRIGHT", 62 / 318, 128 / 383, 0, 62 / 64, 0, 1 },
+        }
+        local made, all = {}, true
+        for _, tl in ipairs(tiles) do
+            local t = inner:CreateTexture(nil, "BACKGROUND")
+            if fileShows(t, base .. tl[1]) then
+                t:SetTexCoord(tl[5], tl[6], tl[7], tl[8])
+                t.share = { tl[3], tl[4] }
+                t:SetPoint(tl[2])
+                made[#made + 1] = t
+            else
+                all = false
+                t:Hide()
+            end
+        end
+        if all then
+            src = base .. "1-4"
+            aspect = 318 / 383
+            inner.tiles = made
+        else
+            for _, t in ipairs(made) do t:Hide() end
+        end
+    end
+    if src == "none" then inner:Hide(); return "none", function() end end
+    local function fit()
+        local w, h = holder:GetWidth() or 0, holder:GetHeight() or 0
+        if w <= 0 or h <= 0 then return end
+        local iw, ih = w, w / aspect
+        if ih < h then ih = h; iw = h * aspect end
+        inner:SetSize(iw, ih)
+        for _, t in ipairs(inner.tiles or {}) do t:SetSize(iw * t.share[1], ih * t.share[2]) end
+    end
+    fit()
+    return src, fit
+end
+
+-- The scene: the scenery across the whole space between the banner and the
+-- bottom, the slots over it. Darker toward the sides where their words sit,
+-- lit from below in Codex's color in the middle, and fading into the page
+-- at every edge, so it has no box around it.
 local function buildStage(page, ac)
-    local stage = CreateFrame("Frame", nil, page)
-    W.Skin(stage, "bg", 1, "line")
+    local scene = CreateFrame("Frame", nil, page)
     local r, g, b = ac[1], ac[2], ac[3]
-    local function layer(sub) return stage:CreateTexture(nil, "BACKGROUND", nil, sub) end
+    local clip = CreateFrame("Frame", nil, scene)
+    clip:SetAllPoints()
+    if clip.SetClipsChildren then clip:SetClipsChildren(true) end
+    local src, fit = raceScenery(clip)
+    G.scenery = src
+    clip:SetAlpha(0.75)
+    scene:SetScript("OnSizeChanged", function() fit() end)
 
-    local scene = layer(-6)
-    scene:SetPoint("TOPLEFT", 1, -1)
-    scene:SetPoint("BOTTOMRIGHT", -1, 1)
-    if raceScenery(scene) then
-        scene:SetAlpha(0.55)
-        if scene.SetDesaturated then scene:SetDesaturated(false) end
+    local bg = (W.PALETTE and W.PALETTE.bg) or { 0.03, 0.04, 0.06 }
+    local function layer(sub)
+        local t = scene:CreateTexture(nil, "ARTWORK", nil, sub)
+        return t
+    end
+    -- without scenery: a deep wash in Codex's color
+    if src == "none" then
+        local base = layer(-8)
+        base:SetAllPoints()
+        gradient(base, "VERTICAL", { r * 0.30, g * 0.30, b * 0.30, 0.9 }, { r * 0.10, g * 0.10, b * 0.10, 0.6 })
     else
-        scene:Hide()
+        local tint = layer(-8)
+        tint:SetAllPoints()
+        gradient(tint, "VERTICAL", { r * 0.30, g * 0.30, b * 0.30, 0.35 }, { 0, 0, 0, 0.35 })
     end
-    -- tint the scenery toward Codex's color, and light it from below
-    local wash = layer(-5)
-    wash:SetAllPoints(scene)
-    gradient(wash, "VERTICAL", { r * 0.25, g * 0.25, b * 0.25, 0.55 }, { 0.02, 0.02, 0.05, 0.75 })
-    local rise = layer(-4)
-    rise:SetPoint("BOTTOMLEFT", 1, 1)
-    rise:SetPoint("BOTTOMRIGHT", -1, 1)
-    rise:SetPoint("TOP", stage, "CENTER", 0, 0)
-    gradient(rise, "VERTICAL", { r, g, b, 0.38 }, { r, g, b, 0 })
-    -- darker at the sides
+    -- light rising from the floor in the middle
+    local rise = layer(-7)
+    rise:SetPoint("BOTTOM", scene, "BOTTOM", 0, 0)
+    rise:SetSize(420, 260)
+    gradient(rise, "VERTICAL", { r, g, b, 0.30 }, { r, g, b, 0 })
+    local riseL = layer(-7)
+    riseL:SetPoint("BOTTOMRIGHT", rise, "BOTTOMLEFT")
+    riseL:SetPoint("TOPRIGHT", rise, "TOPLEFT")
+    riseL:SetWidth(140)
+    gradient(riseL, "HORIZONTAL", { r, g, b, 0 }, { r, g, b, 0.12 })
+    local riseR = layer(-7)
+    riseR:SetPoint("BOTTOMLEFT", rise, "BOTTOMRIGHT")
+    riseR:SetPoint("TOPLEFT", rise, "TOPRIGHT")
+    riseR:SetWidth(140)
+    gradient(riseR, "HORIZONTAL", { r, g, b, 0.12 }, { r, g, b, 0 })
+    -- the sides, where the slots' words are: dark, so they read easily
     for _, side in ipairs({ "LEFT", "RIGHT" }) do
-        local v = layer(-3)
-        v:SetPoint("TOP" .. side, side == "LEFT" and 1 or -1, -1)
-        v:SetPoint("BOTTOM" .. side, side == "LEFT" and 1 or -1, 1)
-        v:SetWidth(60)
-        if side == "LEFT" then gradient(v, "HORIZONTAL", { 0, 0, 0, 0.6 }, { 0, 0, 0, 0 })
-        else gradient(v, "HORIZONTAL", { 0, 0, 0, 0 }, { 0, 0, 0, 0.6 }) end
+        local v = layer(-6)
+        v:SetPoint("TOP" .. side)
+        v:SetPoint("BOTTOM" .. side)
+        v:SetWidth(300)
+        local dark, clear = { bg[1], bg[2], bg[3], 0.92 }, { bg[1], bg[2], bg[3], 0 }
+        if side == "LEFT" then gradient(v, "HORIZONTAL", dark, clear) else gradient(v, "HORIZONTAL", clear, dark) end
     end
-    local topShade = layer(-3)
-    topShade:SetPoint("TOPLEFT", 1, -1)
-    topShade:SetPoint("TOPRIGHT", -1, -1)
-    topShade:SetHeight(70)
-    gradient(topShade, "VERTICAL", { 0, 0, 0, 0 }, { 0, 0, 0, 0.55 })
+    -- fading into the page above and below
+    local top = layer(-5)
+    top:SetPoint("TOPLEFT")
+    top:SetPoint("TOPRIGHT")
+    top:SetHeight(60)
+    gradient(top, "VERTICAL", { bg[1], bg[2], bg[3], 0 }, { bg[1], bg[2], bg[3], 1 })
+    local bottom = layer(-5)
+    bottom:SetPoint("BOTTOMLEFT")
+    bottom:SetPoint("BOTTOMRIGHT")
+    bottom:SetHeight(50)
+    gradient(bottom, "VERTICAL", { bg[1], bg[2], bg[3], 1 }, { bg[1], bg[2], bg[3], 0 })
 
-    -- the floor: a shadow under the feet, a pool of light, and a line of it
-    local FLOOR = 46
+    -- the floor: a soft shadow and a glow under the feet, and a line of light
+    local FLOOR = 74
     local MASK = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask"
-    local pool = stage:CreateTexture(nil, "BACKGROUND", nil, -2)
+    local pool = scene:CreateTexture(nil, "ARTWORK", nil, -4)
     pool:SetTexture(MASK)
-    pool:SetSize(300, 70)
-    pool:SetPoint("CENTER", stage, "BOTTOM", 0, FLOOR)
-    pool:SetVertexColor(r, g, b, 0.30)
+    pool:SetSize(240, 46)
+    pool:SetPoint("CENTER", scene, "BOTTOM", 0, FLOOR)
+    pool:SetVertexColor(r, g, b, 0.22)
     pool:SetBlendMode("ADD")
-    local shadow = stage:CreateTexture(nil, "BACKGROUND", nil, -1)
+    local shadow = scene:CreateTexture(nil, "ARTWORK", nil, -3)
     shadow:SetTexture(MASK)
-    shadow:SetSize(150, 26)
-    shadow:SetPoint("CENTER", stage, "BOTTOM", 0, FLOOR + 2)
-    shadow:SetVertexColor(0, 0, 0, 0.65)
-    local line = stage:CreateTexture(nil, "ARTWORK")
-    line:SetHeight(1)
-    line:SetPoint("LEFT", stage, "BOTTOMLEFT", 30, FLOOR)
-    line:SetPoint("RIGHT", stage, "BOTTOM", 0, FLOOR)
-    gradient(line, "HORIZONTAL", { r, g, b, 0 }, { r * 0.6 + 0.4, g * 0.6 + 0.4, b * 0.6 + 0.4, 0.7 })
-    local line2 = stage:CreateTexture(nil, "ARTWORK")
-    line2:SetHeight(1)
-    line2:SetPoint("LEFT", stage, "BOTTOM", 0, FLOOR)
-    line2:SetPoint("RIGHT", stage, "BOTTOMRIGHT", -30, FLOOR)
-    gradient(line2, "HORIZONTAL", { r * 0.6 + 0.4, g * 0.6 + 0.4, b * 0.6 + 0.4, 0.7 }, { r, g, b, 0 })
-
-    -- the frame: gold outside, a fainter gold line inside, corner pieces
-    for _, e in pairs(stage.skinEdges or {}) do e:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.95) end
-    trim(stage, 4, GOLD, 0.35, "BORDER", 2)
-    corners(stage, ac)
-    -- a crest on the top edge and a jewel on the bottom
-    local crest = flourish(stage, 160, ac)
-    crest:SetPoint("CENTER", stage, "TOP", 0, 0)
-    crest:SetFrameLevel(stage:GetFrameLevel() + 5)
-    local foot = jewel(stage, 11, ac)
-    foot:SetPoint("CENTER", stage, "BOTTOM", 0, 0)
-    stage.floor = FLOOR
-    return stage
+    shadow:SetSize(110, 16)
+    shadow:SetPoint("CENTER", scene, "BOTTOM", 0, FLOOR + 1)
+    shadow:SetVertexColor(0, 0, 0, 0.5)
+    local floorLine = flourish(scene, 300, ac)
+    floorLine:SetPoint("CENTER", scene, "BOTTOM", 0, FLOOR - 12)
+    scene.floor = FLOOR
+    return scene
 end
 
 ---------------------------------------------------------------------------
@@ -759,8 +843,8 @@ end
 ---------------------------------------------------------------------------
 -- Building the page
 ---------------------------------------------------------------------------
-local ROW = 47
 local TOP = 82           -- where the slots start, under the banner
+local ROW_MIN, ROW_MAX = 40, 50
 
 local function classInfo()
     local cname, class = "", nil
@@ -770,11 +854,46 @@ local function classInfo()
     return cname or "", race or "", c
 end
 
+-- the two columns share the page's height: rows as tall as fit, 40 to 50
+local function layoutSlots()
+    local page = ui.page
+    local h = page and page:GetHeight() or 0
+    local row = h > 0 and math.floor((h - TOP - 6) / 8) or 46
+    row = math.max(ROW_MIN, math.min(ROW_MAX, row))
+    local size = math.min(42, row - 4)
+    for i, slot in ipairs(LEFT) do
+        local b = ui.slots[slot]
+        b:ClearAllPoints()
+        b:SetPoint("TOPLEFT", page, "TOPLEFT", 12, -TOP - (i - 1) * row)
+        b:SetSize(size, size)
+        b.strip:SetHeight(size)
+    end
+    for i, slot in ipairs(RIGHT) do
+        local b = ui.slots[slot]
+        b:ClearAllPoints()
+        b:SetPoint("TOPRIGHT", page, "TOPRIGHT", -12, -TOP - (i - 1) * row)
+        b:SetSize(size, size)
+        b.strip:SetHeight(size)
+    end
+    local rb = ui.slots[18]
+    if rb then
+        rb:SetSize(size, size)
+        rb.strip:SetHeight(size)
+    end
+end
+
 function G.Build(page)
     ui.page = page
     ui.preview = "Wearing best in slot"
     local ac = accentOf(page)
     ui.accent = ac
+
+    -- the scene goes first, under everything
+    local scene = buildStage(page, ac)
+    scene:SetPoint("TOPLEFT", page, "TOPLEFT", 0, -TOP + 10)
+    scene:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", 0, 0)
+    scene:SetFrameLevel(page:GetFrameLevel())
+    ui.stage = scene
 
     -- banner: your name, level, race and spec, and how close your gear is
     ui.nameText = page:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
@@ -810,36 +929,14 @@ function G.Build(page)
     rule:SetPoint("TOP", page, "TOP", 0, -TOP + 12)
     rule:SetPoint("LEFT", page, "LEFT", 10, 0)
     rule:SetPoint("RIGHT", page, "RIGHT", -10, 0)
+    rule:SetFrameLevel(scene:GetFrameLevel() + 6)
 
-    -- the slots around the stage
-    ui.slots = {}
-    for i, slot in ipairs(LEFT) do
-        local b = slotWidget(page, slot, "left", ac)
-        b:SetPoint("TOPLEFT", 12, -TOP - (i - 1) * ROW)
-        ui.slots[slot] = b
-    end
-    for i, slot in ipairs(RIGHT) do
-        local b = slotWidget(page, slot, "right", ac)
-        b:SetPoint("TOPRIGHT", -12, -TOP - (i - 1) * ROW)
-        ui.slots[slot] = b
-    end
-    local bottom = { 16, 17, 18 }
-    for i, slot in ipairs(bottom) do
-        local b = slotWidget(page, slot, "bottom", ac)
-        b:SetPoint("BOTTOM", page, "BOTTOM", (i - 2) * 215 - 75, 10)
-        ui.slots[slot] = b
-    end
-
-    -- the stage and the character on it
-    local stage = buildStage(page, ac)
-    stage:SetPoint("TOPLEFT", page, "TOPLEFT", 262, -TOP - 4)
-    stage:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -262, 70)
-    ui.stage = stage
-    local ok, m = pcall(CreateFrame, "DressUpModel", nil, stage)
+    -- the character, in the middle between the columns
+    local ok, m = pcall(CreateFrame, "DressUpModel", nil, page)
     if ok and m then
-        m:SetPoint("TOPLEFT", stage, "TOPLEFT", 6, -14)
-        m:SetPoint("BOTTOMRIGHT", stage, "BOTTOMRIGHT", -6, stage.floor - 8)
-        m:SetFrameLevel(stage:GetFrameLevel() + 2)
+        m:SetPoint("TOPLEFT", scene, "TOPLEFT", 268, -16)
+        m:SetPoint("BOTTOMRIGHT", scene, "BOTTOMRIGHT", -268, scene.floor - 8)
+        m:SetFrameLevel(scene:GetFrameLevel() + 2)
         if m.SetUnit then pcall(m.SetUnit, m, "player") end
         m:SetScript("OnShow", function(self)
             if self.SetUnit then pcall(self.SetUnit, self, "player") end
@@ -859,12 +956,38 @@ function G.Build(page)
             self.turning = x
             if self.SetFacing then self:SetFacing(self.rot) end
         end)
+        m:SetScript("OnEnter", function(self)
+            if not GameTooltip then return end
+            GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
+            GameTooltip:AddLine("Drag to turn your character.", 1, 1, 1)
+            GameTooltip:AddLine("Click a piece around it to link it.", 0.8, 0.8, 0.8)
+            GameTooltip:Show()
+        end)
+        m:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
         ui.model = m
     end
-    ui.hint = stage:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    ui.hint:SetPoint("BOTTOM", stage, "BOTTOM", 0, 12)
-    ui.hint:SetText("Drag to turn  ·  Click a piece to link it")
-    ui.hint:SetAlpha(0.8)
+
+    -- the slots, over the scene
+    ui.slots = {}
+    for _, slot in ipairs(LEFT) do
+        local b = slotWidget(page, slot, "left", ac)
+        b:SetFrameLevel(scene:GetFrameLevel() + 4)
+        ui.slots[slot] = b
+    end
+    for _, slot in ipairs(RIGHT) do
+        local b = slotWidget(page, slot, "right", ac)
+        b:SetFrameLevel(scene:GetFrameLevel() + 4)
+        ui.slots[slot] = b
+    end
+    -- the ranged slot under the character, where the client has one
+    if G.HasRangedSlot() then
+        local b = slotWidget(page, 18, "bottom", ac)
+        b:SetPoint("BOTTOM", page, "BOTTOM", -84, 8)
+        b:SetFrameLevel(scene:GetFrameLevel() + 4)
+        ui.slots[18] = b
+    end
+    layoutSlots()
+    page:HookScript("OnSizeChanged", layoutSlots)
 end
 
 ---------------------------------------------------------------------------
