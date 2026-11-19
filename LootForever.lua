@@ -50,7 +50,7 @@ ns.AddLoot("exc", {
 ns.AddLoot("dal", {
     source = "QuestieDB WoW Forever 1.1.3 and the Gear, Boss & Loot Watch, Nov 19 2026 (strong)",
     verified = false,
-    trash = { { 286987, name = "Violet Sorcerer's Sandals", info = "Cloth feet, level 28; Violet Sorcerer's Vestments" }, { 286988, name = "Violet Sorcerer's Leggings", info = "Cloth legs, level 29; Violet Sorcerer's Vestments" }, { 286989, name = "Violet Sorcerer's Wraps", info = "Cloth wrist, level 28; Violet Sorcerer's Vestments, also Arcane Anomaly" }, { 286990, name = "Arcane Remnant Leggings", info = "Leather legs, level 28" }, { 286991, name = "Roused Nature Footwraps", info = "Leather feet, level 27" }, { 286992, name = "Construct's Grips", info = "Mail hands, level 28" }, { 286995, name = "Guardian's Emblem", info = "Level 28" }, { 286996, name = "City Guard's Tarnished Blade", info = "One-hand Sword, level 29" }, { 286994, name = "Tattered Kirin Tor Cloak", info = "Back, level 28; source unconfirmed" } },
+    trash = { { 286987, name = "Violet Sorcerer's Sandals", info = "Cloth feet, level 28; Violet Sorcerer's Vestments" }, { 286988, name = "Violet Sorcerer's Leggings", info = "Cloth legs, level 29; Violet Sorcerer's Vestments" }, { 286989, name = "Violet Sorcerer's Wraps", info = "Cloth wrist, level 28; Violet Sorcerer's Vestments, also Arcane Anomaly" }, { 286990, name = "Arcane Remnant Leggings", info = "Leather legs, level 28" }, { 286991, name = "Roused Nature Footwraps", info = "Leather feet, level 27" }, { 286992, name = "Construct's Grips", info = "Mail hands, level 28" }, { 286995, name = "Guardian's Emblem", info = "Level 28" }, { 286996, name = "City Guard's Tarnished Blade", info = "One-hand Sword, level 29" } },
     bosses = {
         { "Atrexis the Grave Knight", { { 273032, name = "Bonebinder's Signet", info = "Finger" }, { 273033, name = "Gravespike Repeater", info = "Crossbow" }, { 273036, name = "Graveweave Bindings", info = "Cloth Wrist" } } },
         { "Lyn the Ignored", { { 273053, name = "Tendonscraper Dagger", info = "caster MH" }, { 273054, name = "Cartilage Shapers", info = "Leather, level 28" }, { 273055, name = "Bonepile Gaze", info = "Shield, level 28" } } },
@@ -66,7 +66,7 @@ ns.AddLoot("dal", {
 ns.AddLoot("drowned", {
     source = "QuestieDB WoW Forever 1.1.3 and the Gear, Boss & Loot Watch, Nov 19 2026 (improved)",
     verified = false,
-    trash = { { 271718, name = "Linken's Boots of Iron", info = "Mail, level 33; any boss can drop them" }, { 287002, name = "Risen Sentry's Links", info = "Mail, level 35; Risen Sentries" } },
+    trash = { { 271718, name = "Linken's Boots of Iron", info = "Mail, level 33; any boss can drop them" }, { 287002, name = "Risen Sentry's Links", info = "Mail legs, level 35; Risen Sentries" } },
     bosses = {
         { "Zul'Alai", { { 274598, name = "Bloodslash Axe", info = "One-hand Axe, level 34" }, { 274599, name = "Oathbound Bracers", info = "Leather, level 34" }, { 274600, name = "Berserker Shackles", info = "Mail, level 34" } } },
         { "Var'Taka", { { 274601, name = "Harpoon of Command", info = "Polearm, level 35" }, { 274602, name = "Brinebelly Leggings", info = "Leather, level 35" }, { 274613, name = "Priestess Cloak", info = "Level 35" } } },
@@ -108,7 +108,6 @@ ns.AddLoot("alcaz", {
 ns.AddLoot("blackmaw", {
     source = "QuestieDB WoW Forever 1.1.3 and the Gear, Boss & Loot Watch, Nov 19 2026 (strong)",
     verified = false,
-    trash = { { 287030, name = "Blackmaw Bindings", info = "Mail wrist, level 54; source unconfirmed" } },
     bosses = {
         { "Impaan the Imprisoner", { { 249698, name = "Feathered Charm Necklace", info = "Quest item", quest = true }, { 280056, name = "Flameslash Crescent", info = "Two-hand Axe, level 54" }, { 280057, name = "Robes of Dark Summons", info = "Cloth, level 54" }, { 280058, name = "Impish Chain Hood", info = "Mail, level 54" } } },
         { "Bonesnout the Unbroken", { { 249696, name = "Tusks of the Unbroken", info = "Quest item", quest = true }, { 280059, name = "Tuskblade Halberd", info = "Polearm, level 55" }, { 280060, name = "Lucky Shovelnose Tuft", info = "Level 55" }, { 280061, name = "Spike Crested Bracers", info = "Plate, level 55" } } },
