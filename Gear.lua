@@ -193,9 +193,11 @@ end
 -- one candidate's facts, or nil when it can't be worn now (or isn't loaded)
 local function judge(c, level, key)
     local cm = M()
-    if asked(c.id) and not c.link then return nil, true end
     local name, link, quality, _, minLevel, _, _, _, loc = GetItemInfo(c.link or c.id)
-    if not name then return nil, true end
+    if not name then
+        asked(c.id)
+        return nil, true
+    end
     if not c.worn then
         if (tonumber(minLevel) or 0) > level then return nil end
         if (tonumber(quality) or 0) < 1 then return nil end
@@ -296,12 +298,16 @@ local ui = {}
 G.UI = ui
 
 local QUALITY_FALLBACK = { [0] = "ff9d9d9d", "ffffffff", "ff1eff00", "ff0070dd", "ffa335ee", "ffff8000" }
-local function qualityHex(q)
+-- "|cffrrggbb" for an item quality
+local function qualityColor(q)
+    local h
     if R.Items and R.Items.QualityHex then
-        local ok, h = pcall(R.Items.QualityHex, q)
-        if ok and type(h) == "string" then return h end
+        local ok, v = pcall(R.Items.QualityHex, q)
+        if ok and type(v) == "string" then h = v end
     end
-    return QUALITY_FALLBACK[q or 1] or "ffffffff"
+    h = h or QUALITY_FALLBACK[q or 1] or "ffffffff"
+    if h:sub(1, 2) ~= "|c" then h = "|c" .. h end
+    return h
 end
 local function qualityRGB(q)
     local c = ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[q or 1]
@@ -391,7 +397,7 @@ local function paintSlot(b, e, res)
         local r, g, bl = qualityRGB(e.quality)
         b.edge:SetVertexColor(r, g, bl, 0.8)
         b.edge:SetShown((e.quality or 1) >= 2)
-        b.name:SetText("|c" .. qualityHex(e.quality) .. e.name .. "|r")
+        b.name:SetText(qualityColor(e.quality) .. e.name .. "|r")
         b.sub:SetText(verdict(b.slot, e, res))
     else
         b.icon:SetTexture(emptyTexture(b.slot))
@@ -412,18 +418,26 @@ local function paintSlot(b, e, res)
 end
 
 -- the model wears your best pieces, or your own gear
-local function dressModel()
+local DRESS_ORDER = { 1, 3, 15, 5, 9, 10, 6, 7, 8, 16, 17, 18 }
+local function dressModel(force)
     local m = ui.model
     if not m then return end
-    pcall(m.SetUnit, m, "player")
     local res = state.result
-    if not (res and ui.preview ~= "Your gear") then
+    local wearBis = res and ui.preview ~= "Your gear"
+    local sig = "gear"
+    if wearBis then
+        local ids = {}
+        for _, slot in ipairs(DRESS_ORDER) do local e = res.slots[slot]; ids[#ids + 1] = e and e.id or 0 end
+        sig = table.concat(ids, ",")
+    end
+    if sig == ui.dressed and not force then return end      -- already wearing it: no reload, no flicker
+    ui.dressed = sig
+    if not wearBis then
         if m.Dress then pcall(m.Dress, m) end
         return
     end
     if m.Undress then pcall(m.Undress, m) end
-    local order = { 1, 3, 15, 5, 9, 10, 6, 7, 8, 16, 17, 18 }
-    for _, slot in ipairs(order) do
+    for _, slot in ipairs(DRESS_ORDER) do
         local e = res.slots[slot]
         if e and m.TryOn then pcall(m.TryOn, m, e.link) end
     end
@@ -465,6 +479,13 @@ function G.Build(page)
         m:SetPoint("TOPLEFT", page, "TOPLEFT", 250, -36)
         m:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -250, 58)
         if m.SetUnit then pcall(m.SetUnit, m, "player") end
+        -- shown again (the tab, the app): the game resets the model, so dress it again
+        m:SetScript("OnShow", function(self)
+            if self.SetUnit then pcall(self.SetUnit, self, "player") end
+            if self.SetFacing then pcall(self.SetFacing, self, self.rot or 0) end
+            ui.dressed = nil
+            dressModel(true)
+        end)
         -- drag to turn the character
         m:EnableMouse(true)
         m.rot = 0
@@ -492,7 +513,9 @@ local function paint()
     elseif res then
         local text = ("Best pieces you can wear at level %d%s, scored by %s."):format(res.level,
             res.spec and (" as " .. tostring(res.spec)) or "", res.by)
-        if res.waiting > 0 then text = text .. C.dim .. (" Still loading %d items from the server..."):format(res.waiting) .. "|r" end
+        if res.waiting > 0 and not ui.gaveUp then
+            text = text .. C.dim .. (" Loading %d more items from the server..."):format(res.waiting) .. "|r"
+        end
         ui.info:SetText(text)
     end
     for slot, b in pairs(ui.slots or {}) do paintSlot(b, res and res.slots[slot] or nil, res) end
@@ -500,16 +523,25 @@ local function paint()
 end
 G.Paint = paint
 
-local retryQueued = false
-function G.Refresh()
+-- Items still on their way from the server: look again in a few seconds, as
+-- long as more keep arriving. Some IDs in the loot lists are items this
+-- server doesn't have and never sends; after a few tries with nothing new,
+-- stop asking and stop saying it's loading.
+local retryQueued, lastWaiting, stalls = false, nil, 0
+local MAX_STALLS = 3
+function G.Refresh(fromRetry)
     if not (ui.page and ui.page:IsVisible()) then return end
+    if not fromRetry then stalls, lastWaiting, ui.gaveUp = 0, nil, false end
     paint()
     G.Compute(function()
+        local w = state.waiting or 0
+        if lastWaiting and w >= lastWaiting then stalls = stalls + 1 else stalls = 0 end
+        lastWaiting = w
+        if stalls >= MAX_STALLS then ui.gaveUp = true end
         paint()
-        -- items still on their way from the server: look again in a moment
-        if state.waiting > 0 and not retryQueued and C_Timer then
+        if w > 0 and not ui.gaveUp and not retryQueued and C_Timer then
             retryQueued = true
-            C_Timer.After(3, function() retryQueued = false; G.Refresh() end)
+            C_Timer.After(3, function() retryQueued = false; G.Refresh(true) end)
         end
     end)
 end
