@@ -2408,10 +2408,6 @@ SlashCmdList.RUINCODEX = function(msg)
     elseif cmd == "macros" or cmd == "macro" then tab = TAB_MACROS; if ns.Macros then ns.Macros.SetMode("macros") end
     elseif cmd == "commands" or cmd == "cmds" then tab = TAB_MACROS; if ns.Macros then ns.Macros.SetMode("commands") end
     elseif cmd == "path" or cmd == "gear" or cmd == "bis" or cmd == "upgrades" then tab = TAB_BIS
-    elseif cmd == "scenery" then
-        local src = ns.Gear and ns.Gear.scenery
-        M:Print("Best in Slot scenery: " .. (src == nil and "open the Best in Slot tab first" or (src == "none" and "this client has no dressing room picture for your race, so the stage is lit in Codex's color" or tostring(src))) .. ".")
-        return
     elseif cmd == "ranks" or cmd == "rank" then
         if ns.RankUp then ns.RankUp.Check(true) end
         return

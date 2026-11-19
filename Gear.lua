@@ -447,190 +447,73 @@ local function accentOf(page)
     return (ok and scheme and scheme.accent) or W.PALETTE.glow or { 0.62, 0.46, 0.92 }
 end
 
--- Your race's dressing room scenery. Clients keep it in different places:
--- a modern atlas, a modern single picture, or the classic four tiles. Each
--- is tried in turn; G.scenery says which one showed ("none" when this client
--- has none, and the stage is lit in Codex's color alone).
-local function fileShows(tex, path)
-    local ok, ret = pcall(tex.SetTexture, tex, path)
-    if not ok or ret == false then return false end
-    if tex.GetTextureFileID then
-        local ok2, id = pcall(tex.GetTextureFileID, tex)
-        if ok2 and (id == nil or id == 0) then return false end
-    end
-    return true
-end
-
--- fills holder (a frame that clips) with the scenery, kept in proportion
--- and covering it; returns the source used and a function to fit it again
-local function raceScenery(holder)
-    local race = UnitRace and select(2, UnitRace("player"))
-    if type(race) ~= "string" then return "none", function() end end
-    local inner = CreateFrame("Frame", nil, holder)
-    inner:SetPoint("CENTER")
-    local aspect                     -- width / height of the picture
-    -- 1. the modern atlas
-    local name = "dressingroom-background-" .. race:lower()
-    local info
-    if C_Texture and C_Texture.GetAtlasInfo then
-        local ok, i = pcall(C_Texture.GetAtlasInfo, name)
-        info = ok and i or nil
-    end
-    local src = "none"
-    if info then
-        local t = inner:CreateTexture(nil, "BACKGROUND")
-        t:SetAllPoints()
-        if pcall(t.SetAtlas, t, name) then
-            src = "atlas " .. name
-            aspect = (info.width and info.height and info.height > 0) and (info.width / info.height) or (4 / 3)
-        end
-    end
-    -- 2. the modern single picture
-    if src == "none" then
-        local t = inner:CreateTexture(nil, "BACKGROUND")
-        t:SetAllPoints()
-        for _, path in ipairs({ "Interface\\DressUpFrame\\DressingRoom" .. race, "Interface\\DressUpFrame\\DressUpBackground-" .. race }) do
-            if fileShows(t, path) then src = path; aspect = 4 / 3; break end
-        end
-        if src == "none" then t:Hide() end
-    end
-    -- 3. the classic four tiles (318 x 383 together)
-    if src == "none" then
-        local base = "Interface\\DressUpFrame\\DressUpBackground-" .. race
-        local tiles = {
-            { 1, "TOPLEFT", 256 / 318, 255 / 383, 0, 1, 0, 255 / 256 },
-            { 2, "TOPRIGHT", 62 / 318, 255 / 383, 0, 62 / 64, 0, 255 / 256 },
-            { 3, "BOTTOMLEFT", 256 / 318, 128 / 383, 0, 1, 0, 1 },
-            { 4, "BOTTOMRIGHT", 62 / 318, 128 / 383, 0, 62 / 64, 0, 1 },
-        }
-        local made, all = {}, true
-        for _, tl in ipairs(tiles) do
-            local t = inner:CreateTexture(nil, "BACKGROUND")
-            if fileShows(t, base .. tl[1]) then
-                t:SetTexCoord(tl[5], tl[6], tl[7], tl[8])
-                t.share = { tl[3], tl[4] }
-                t:SetPoint(tl[2])
-                made[#made + 1] = t
-            else
-                all = false
-                t:Hide()
-            end
-        end
-        if all then
-            src = base .. "1-4"
-            aspect = 318 / 383
-            inner.tiles = made
-        else
-            for _, t in ipairs(made) do t:Hide() end
-        end
-    end
-    if src == "none" then inner:Hide(); return "none", function() end end
-    local function fit()
-        local w, h = holder:GetWidth() or 0, holder:GetHeight() or 0
-        if w <= 0 or h <= 0 then return end
-        local iw, ih = w, w / aspect
-        if ih < h then ih = h; iw = h * aspect end
-        inner:SetSize(iw, ih)
-        for _, t in ipairs(inner.tiles or {}) do t:SetSize(iw * t.share[1], ih * t.share[2]) end
-    end
-    fit()
-    return src, fit, inner
-end
-
--- The scene behind the character. Layers, bottom to top: the scenery
--- (pushed far back: no color, dim, tinted toward Codex's color), a shade
--- over it with dark panels where the slots' words sit, light rising from the
--- floor, and a floor under the character's feet: a shadow, a pool of light
--- and a gold line. It fades into the page at every edge, so there's no box.
+-- The stage: no box and no scenery behind the character, just light. A soft
+-- beam falls from the jewel under the banner, a glow sits behind the
+-- character, and an arcane circle in Codex's color turns slowly on the floor
+-- under the feet, with a soft shadow where they stand. The textures are
+-- Codex's own (Media/), drawn white and tinted here.
+local MEDIA = "Interface\\AddOns\\RUIN_Codex\\Media\\"
 local FEET = 0.19        -- a model's feet stand this far up its frame
+
+-- turn a square texture by angle a (radians) in its own space, so a circle
+-- squashed into an ellipse still turns like a disc seen at an angle
+local function turn(t, a)
+    local s, c = math.sin(a), math.cos(a)
+    local function p(x, y) return 0.5 + x * c - y * s, 0.5 + x * s + y * c end
+    local ulx, uly = p(-0.5, -0.5)
+    local llx, lly = p(-0.5, 0.5)
+    local urx, ury = p(0.5, -0.5)
+    local lrx, lry = p(0.5, 0.5)
+    t:SetTexCoord(ulx, uly, llx, lly, urx, ury, lrx, lry)
+end
+
 local function buildStage(page, ac)
     local scene = CreateFrame("Frame", nil, page)
     local r, g, b = ac[1], ac[2], ac[3]
-    local bg = (W.PALETTE and W.PALETTE.bg) or { 0.03, 0.04, 0.06 }
-
-    local clip = CreateFrame("Frame", nil, scene)
-    clip:SetAllPoints()
-    if clip.SetClipsChildren then clip:SetClipsChildren(true) end
-    local src, fit, inner = raceScenery(clip)
-    G.scenery = src
-    if inner then
-        for _, t in ipairs({ inner:GetRegions() }) do
-            if t.SetDesaturated then t:SetDesaturated(true) end
-            if t.SetVertexColor then t:SetVertexColor(0.55 + r * 0.25, 0.55 + g * 0.25, 0.55 + b * 0.25) end
-        end
-    end
-    clip:SetAlpha(0.42)
-    scene:SetScript("OnSizeChanged", function() fit() end)
-
-    -- everything drawn over the scenery lives on its own frame above it
-    local shade = CreateFrame("Frame", nil, scene)
-    shade:SetAllPoints()
-    shade:SetFrameLevel(clip:GetFrameLevel() + 1)
-    scene.shade = shade
-    local function layer(sub) return shade:CreateTexture(nil, "ARTWORK", nil, sub) end
-
-    -- a dark veil over it all, deeper toward the top
-    local veil = layer(-8)
-    veil:SetAllPoints()
-    gradient(veil, "VERTICAL", { bg[1], bg[2], bg[3], 0.45 }, { bg[1], bg[2], bg[3], 0.80 })
-    -- the columns: solid where the words are, fading toward the middle
-    local PANEL, FADE = 250, 70
-    for _, side in ipairs({ "LEFT", "RIGHT" }) do
-        local solidPanel = layer(-7)
-        solidPanel:SetPoint("TOP" .. side)
-        solidPanel:SetPoint("BOTTOM" .. side)
-        solidPanel:SetWidth(PANEL)
-        solidPanel:SetColorTexture(bg[1], bg[2], bg[3], 0.94)
-        local f = layer(-7)
-        f:SetPoint("TOP" .. side, solidPanel, "TOP" .. (side == "LEFT" and "RIGHT" or "LEFT"))
-        f:SetPoint("BOTTOM" .. side, solidPanel, "BOTTOM" .. (side == "LEFT" and "RIGHT" or "LEFT"))
-        f:SetWidth(FADE)
-        local dark, clear = { bg[1], bg[2], bg[3], 0.94 }, { bg[1], bg[2], bg[3], 0 }
-        if side == "LEFT" then gradient(f, "HORIZONTAL", dark, clear) else gradient(f, "HORIZONTAL", clear, dark) end
-    end
-    -- fading into the page above and below
-    local top = layer(-6)
-    top:SetPoint("TOPLEFT")
-    top:SetPoint("TOPRIGHT")
-    top:SetHeight(70)
-    gradient(top, "VERTICAL", { bg[1], bg[2], bg[3], 0 }, { bg[1], bg[2], bg[3], 1 })
-    local bottom = layer(-6)
-    bottom:SetPoint("BOTTOMLEFT")
-    bottom:SetPoint("BOTTOMRIGHT")
-    bottom:SetHeight(60)
-    gradient(bottom, "VERTICAL", { bg[1], bg[2], bg[3], 1 }, { bg[1], bg[2], bg[3], 0 })
-
-    -- the floor sits where the character's feet are (placed by G.Build)
-    local feet = CreateFrame("Frame", nil, shade)
+    local light = CreateFrame("Frame", nil, scene)
+    light:SetAllPoints()
+    scene.shade = light
+    local feet = CreateFrame("Frame", nil, light)
     feet:SetSize(1, 1)
     scene.feet = feet
-    -- light rising from the floor
-    local rise = layer(-5)
-    rise:SetPoint("BOTTOM", feet, "CENTER", 0, -4)
-    rise:SetSize(260, 240)
-    gradient(rise, "VERTICAL", { r, g, b, 0.22 }, { r, g, b, 0 })
-    local MASK = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask"
-    -- a pool of light on the ground, and the floor darkening beyond it
-    local ground = layer(-4)
-    ground:SetPoint("TOPLEFT", shade, "TOPLEFT", PANEL, 0)
-    ground:SetPoint("TOPRIGHT", shade, "TOPRIGHT", -PANEL, 0)
-    ground:SetPoint("TOP", feet, "CENTER", 0, 0)
-    ground:SetPoint("BOTTOM", shade, "BOTTOM", 0, 0)
-    gradient(ground, "VERTICAL", { bg[1], bg[2], bg[3], 0.85 }, { bg[1], bg[2], bg[3], 0.35 })
-    local pool = layer(-3)
-    pool:SetTexture(MASK)
-    pool:SetSize(230, 44)
-    pool:SetPoint("CENTER", feet, "CENTER", 0, -2)
-    pool:SetVertexColor(r, g, b, 0.32)
-    pool:SetBlendMode("ADD")
-    local shadow = layer(-2)
-    shadow:SetTexture(MASK)
-    shadow:SetSize(96, 18)
-    shadow:SetPoint("CENTER", feet, "CENTER", 0, 0)
-    shadow:SetVertexColor(0, 0, 0, 0.75)
-    local floorLine = flourish(shade, 280, ac)
-    floorLine:SetPoint("CENTER", feet, "CENTER", 0, -1)
-    floorLine:SetAlpha(0.8)
+    local function tex(file, sub, blend)
+        local t = light:CreateTexture(nil, "ARTWORK", nil, sub)
+        t:SetTexture(MEDIA .. file)
+        t:SetBlendMode(blend or "ADD")
+        return t
+    end
+    -- the beam, from the top of the stage down to the floor
+    local beam = tex("Beam", -6)
+    beam:SetPoint("TOP", scene, "TOP", 0, 2)
+    beam:SetPoint("BOTTOM", feet, "CENTER", 0, -24)
+    beam:SetWidth(300)
+    beam:SetVertexColor(r, g, b, 0.32)
+    scene.beam = beam
+    -- a glow behind the character
+    local halo = tex("Glow", -5)
+    halo:SetSize(350, 350)
+    scene.halo = halo
+    halo:SetVertexColor(r, g, b, 0.23)
+    -- the circle on the floor, and light pooled in it
+    local runes = tex("Runes", -4)
+    runes:SetSize(300, 84)
+    runes:SetPoint("CENTER", feet, "CENTER", 0, 0)
+    runes:SetVertexColor(math.min(1, r * 1.1), math.min(1, g * 1.1), math.min(1, b * 1.1), 0.9)
+    local pool = tex("Glow", -3)
+    pool:SetSize(250, 58)
+    pool:SetPoint("CENTER", feet, "CENTER", 0, 0)
+    pool:SetVertexColor(r, g, b, 0.36)
+    local shadow = tex("Glow", -2, "BLEND")
+    shadow:SetSize(100, 22)
+    shadow:SetPoint("CENTER", feet, "CENTER", 0, 1)
+    shadow:SetVertexColor(0, 0, 0, 0.85)
+    -- the circle turns, slowly, while the tab is open
+    local angle = 0.2
+    turn(runes, angle)
+    light:SetScript("OnUpdate", function(_, elapsed)
+        angle = (angle + (elapsed or 0) * 0.06) % (math.pi * 2)
+        turn(runes, angle)
+    end)
     return scene
 end
 
@@ -675,7 +558,7 @@ local function slotWidget(parent, slot, side, ac)
     holder.bisRing:SetPoint("CENTER", holder.bis, "CENTER")
     holder.bisRing:Hide()
     -- a band of light behind the words, fading away from the icon
-    local strip = parent:CreateTexture(nil, "BACKGROUND", nil, 1)
+    local strip = holder:CreateTexture(nil, "BACKGROUND", nil, -6)
     strip:SetHeight(42)
     local r, g, b = ac[1], ac[2], ac[3]
     local W_STRIP = side == "bottom" and 170 or 210
@@ -690,9 +573,9 @@ local function slotWidget(parent, slot, side, ac)
     end
     holder.strip = strip
     -- slot name in small capitals, the item, and where it comes from
-    holder.cap = parent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    holder.name = W.Label(parent, "", "GameFontNormal")
-    holder.sub = W.Label(parent, "", "GameFontHighlightSmall")
+    holder.cap = holder:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    holder.name = W.Label(holder, "", "GameFontNormal")
+    holder.sub = W.Label(holder, "", "GameFontHighlightSmall")
     local width = side == "bottom" and 150 or 190
     for _, fs in ipairs({ holder.cap, holder.name, holder.sub }) do
         fs:SetWordWrap(false)
@@ -969,8 +852,11 @@ function G.Build(page)
         m:SetFrameLevel(scene.shade:GetFrameLevel() + 1)
         -- the floor under the feet, wherever the frame's size puts them
         local function placeFeet()
+            local h = m:GetHeight() or 0
             scene.feet:ClearAllPoints()
-            scene.feet:SetPoint("CENTER", m, "BOTTOM", 0, (m:GetHeight() or 0) * FEET)
+            scene.feet:SetPoint("CENTER", m, "BOTTOM", 0, h * FEET)
+            scene.halo:ClearAllPoints()
+            scene.halo:SetPoint("CENTER", m, "BOTTOM", 0, h * 0.62)
         end
         placeFeet()
         m:HookScript("OnSizeChanged", placeFeet)
