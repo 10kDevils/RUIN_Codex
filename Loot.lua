@@ -34,7 +34,7 @@ local function cleanItem(e)
         if type(e.info) == "string" and e.info ~= "" then item.info = clip(e.info, 80) end
         return item
     end
-    if type(e) == "table" and e[1] == nil and tonumber(e.id) then e = { tonumber(e.id), e.chance, name = e.name, note = e.note, info = e.info } end
+    if type(e) == "table" and e[1] == nil and tonumber(e.id) then e = { tonumber(e.id), e.chance, name = e.name, note = e.note, info = e.info, quest = e.quest } end
     if type(e) == "number" then
         if e >= 1 and e < 1000000 and e == math.floor(e) then return { id = e } end
         return nil
@@ -48,6 +48,7 @@ local function cleanItem(e)
         if type(name) == "string" and name ~= "" then item.name = name:gsub("|", ""):sub(1, 60) end
         if type(e.note) == "string" then item.note = e.note:gsub("|", ""):sub(1, 40) end
         if type(e.info) == "string" and e.info ~= "" then item.info = clip(e.info, 80) end
+        if e.quest == true then item.quest = true end           -- a quest item: kept out of gear advice
         return item
     end
     return nil

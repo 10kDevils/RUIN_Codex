@@ -1,8 +1,9 @@
 -- RUIN Codex dungeon data
 -- The classic dungeons' level ranges and bosses are WoW Classic's (a sample
 -- until RUIN records Forever's). WoW Forever's nine new dungeons, from Hall of
--- Thanes to Shaper's Terrace, come from the launch databases of 2026-11-05
--- (forever = "2026-11-05"): levels, entrance, bosses in kill order with tips,
+-- Thanes to Shaper's Terrace, come from the launch databases of 2026-11-05 and
+-- the Gear, Boss & Loot Watch of 2026-11-19 with QuestieDB's WoW Forever
+-- database (forever = the date): levels, entrance, bosses in kill order with tips,
 -- dungeon quests, attunement, set bonuses and quest XP where published.
 -- status: how complete the public record was (complete, strong, partial,
 -- story_only, minimal). Boss loot lives in the loot files (LootForever.lua);
@@ -337,43 +338,79 @@ ns.Dungeons = {
         questXP = "4 quests each faction = 37,600 XP (about 1 level at 28)",
         status = "strong",
     },
+    -- Updated 2026-11-19: boss lists and quests from the Gear, Boss & Loot Watch and
+    -- QuestieDB's WoW Forever database; loot in LootForever.lua
     {
-        id = "drowned", name = "The Drowned City", levels = "35-40", where = "Off Stranglethorn coast (west of Grom'gol area); underwater entrance", forever = "2026-11-05",
+        id = "drowned", name = "The Drowned City", levels = "35-40", where = "Off the Stranglethorn coast; underwater entrance", forever = "2026-11-19",
         bosses = {
-            { "Zul'Alai", "Boss 1. Mechanics and loot not published yet." },
-            { "Captain Dreadrise", "Boss 3. Mechanics and loot not published yet." },
-            { "Min'loth the Serpent", "Boss 5. Mechanics and loot not published yet." },
+            { "Zul'Alai", "Troll boss. Mechanics not published yet." },
+            { "Var'Taka", "Brinescale naga; a quest asks for his death (The Only Good Brinescale...)." },
+            { "Primeval Elemental", "Drops Heart of the Primeval, a caster trinket reported to drop often." },
+            { "Captain Dreadrise", "Saltseer pirate captain; kill 3 Saltseer Coroners nearby for The Saltseer Captain." },
+            { "Deathless Marrow", "Drops the Ancient Gurubashi Idol for the idol quests." },
+            { "Min'loth the Serpent", "Last boss. Drops Maw of Min'loth, a tank shield." },
         },
-        notes = { "Troll city risen from the sea; naga, murlocs, pirates", "Underwater corridors; open-air ruins with weather", "Boss drop tables not fully published; item stats often hidden until looted" },
+        quests = { "The Drowned City", "Take Two With Water", "Magics of the Drowned City", "Shady Saltseers", "The Saltseer Captain",
+                   "The Only Good Brinescale...", "Ancient Gurubashi Idol", "Ancient Gurubashi Secrets" },
+        notes = { "Troll city risen from the sea; naga, murlocs, pirates", "Quest chains start in Booty Bay, Rebel Camp, Grom'gol and Southshore",
+                  "Linken's Boots of Iron can drop from any boss" },
+        status = "improved",
+    },
+    {
+        id = "kroldok", name = "Krol'dok Stronghold", areas = { 17780 }, levels = "40-45", where = "Riverglades (EK east coast)", forever = "2026-11-19",
+        bosses = {
+            { "Slavecrusher Grox", "First boss. Mechanics not published yet." },
+            { "Twilight Commander Zarmok", "Twilight's Hammer commander; his cultists drop Cultist Ears and Bangles for the Riverglades quests." },
+            { "War Handler Ashka", "Worg handler; expect worgs with him." },
+            { "Nar'gurk", "Drops the Tome of Twilight and Krol'dok Warplate (the Krol'dok Battlegear set)." },
+            { "Bossman Toof", "Mechanics not published yet." },
+            { "Overlord Mugg", "Last boss. Drops the Eye of Mugg for the quest, and Emblem of Slamming (trinket)." },
+        },
+        quests = { "Krol'dok Moulding", "A Token of Vengeance", "Twilight Mementos", "Krol'dok No More!", "Tome of Twilight", "Eye of Mugg", "Vengeance of the Highborne" },
+        notes = { "Twilight's Hammer ogre fortress", "Do the Riverglades quests first: they lead here", "Bridge wave encounter with a hole in the bridge" },
+        status = "improved",
+    },
+    {
+        id = "alcaz", name = "Alcaz Prison", levels = "48-53", where = "Alcaz Island, Dustwallow Marsh", forever = "2026-11-19",
+        bosses = {
+            { "Tidemistress Ca'zass", "Naga; her head is needed for A Little Payback / A Bit of Wet Work." },
+            { "Overseer Wrex", "Defias overseer. Mechanics not published yet." },
+            { "Katerina the Cleaner", "Mechanics not published yet." },
+            { "Zarla Ober", "Rides Blazeroar; her loot drops from Blazeroar (enabled by the Nov 9 hotfix)." },
+            { "Blazeroar", "Drops Zarla's Journal (The Dragon's Journal) and her loot." },
+            { "Commander Folkar", "Orc commander held here; part of No Orc Left Behind and Bad News for Folkar." },
+            { "The Questioner", "Drops the shackle key (The Man in the Iron Chains)." },
+        },
+        quests = { "Right Place, Wrong Time", "The Secret Prison", "No Orc Left Behind", "The Honor of the Kor'kron", "A Little Payback", "A Bit of Wet Work",
+                   "Blood Red Bandanas", "The Man in the Iron Chains", "Bad News for Folkar", "The Dragon's Journal" },
+        notes = { "Defias against naga; the search for King Varian Wrynn", "Precisely Calibrated Boomstick (epic gun) is reported from here" },
         status = "partial",
     },
     {
-        id = "kroldok", name = "Krol'dok Stronghold", levels = "40-45", where = "Riverglades (new zone, EK east coast)", forever = "2026-11-05",
+        id = "blackmaw", name = "Blackmaw Hold", levels = "55-60", where = "Northern Azshara, behind the sealed furbolg gates", forever = "2026-11-19",
         bosses = {
+            { "Impaan the Imprisoner", "Interrupt him; kill his imps before he dies." },
+            { "Bonesnout the Unbroken", "Takes 25% less damage for each living Legashi Ritualist: kill the ritualists first. AoE stun." },
+            { "Withermaw", "Maggots; AoE fear (Fear Ward, Tremor Totem)." },
+            { "Unbound Spirit", "Speak to the NPC; destroy the 3 pillars while protecting the channeler from adds." },
+            { "Elder Shaman Bloodmane", "Two spectral wolves: focus the boss or cleave." },
+            { "Blackmaw Behemoth", "Kill Clawbert, its healer, first. Enrage, shout and whirlwind." },
+            { "Varrox Bleakhoof", "Interrupt Fear and Shadow Bolt Volley. Crimson Wrest mind-controls, then explodes; avoid the ground orbs." },
         },
-        notes = { "Twilight's Hammer ogre fortress", "Outdoor-feeling dungeon; bridge wave encounter with hole in bridge", "Krol'dok Battlegear set referenced but stats hidden", "No full public loot table yet" },
-        status = "story_only",
+        quests = { "The Twin Bears", "Get to the Roots of It", "Blackmaw Magic", "Blackmaw Pouches", "The Reliquary of Tyr", "Blackmaw Reclamation" },
+        notes = { "Non-linear: several routes through the furbolg city", "On the path toward the Barrow Deeps raid", "Mid-November gold exploit here was fixed (gold removed, abusers suspended)" },
+        status = "strong",
     },
     {
-        id = "alcaz", name = "Alcaz Prison", levels = "48-53", where = "Alcaz Island, Dustwallow Marsh", forever = "2026-11-05",
+        id = "shaper", name = "Shaper's Terrace", areas = { 16985 }, levels = "58-60", where = "Northern Un'Goro Crater", forever = "2026-11-19",
         bosses = {
+            { "Vitrix", "Titan construct; drops Sparklance Wand and Bolt's Charged Eyeball, and the others' loot." },
+            { "Snowtalon", "Drops Albinofur Grips and Crownroar Chestplate." },
+            { "Cinder", "Drops Heartflame Gauntlets." },
         },
-        notes = { "Defias vs naga conflict theme", "Rumored connection to Varian Wrynn lore", "Loot/quests largely unpublished" },
-        status = "minimal",
-    },
-    {
-        id = "blackmaw", name = "Blackmaw Hold", levels = "55-60", where = "Northern Azshara, behind furbolg gates", forever = "2026-11-05",
-        bosses = {
-        },
-        notes = { "Furbolg city fighting corruption; multiple routes", "May connect toward Barrow Deeps raid", "No public boss list or loot table yet (ForeverChanges: 0 bosses / 0 drops recorded)" },
-        status = "minimal",
-    },
-    {
-        id = "shaper", name = "Shaper's Terrace", levels = "58-60", where = "Northern Un'Goro Crater", forever = "2026-11-05",
-        bosses = {
-        },
-        notes = { "Titan facility", "Power crystals gathered in Un'Goro used at consoles inside", "No public boss/loot table yet" },
-        status = "minimal",
+        quests = { "Digestible Research", "Panic at the Digsite", "Mapping the Way Forward", "The Dark Crystal", "Crystalline Elements", "Essence of Seeping Slimes" },
+        notes = { "Titan facility", "Gather power crystals in Un'Goro for the consoles inside", "Boss list still filling in (Vitrix, Snowtalon and Cinder named in hotfixes)" },
+        status = "partial",
     },
 }
 
@@ -423,6 +460,17 @@ ns.Raids = {
         bosses = {
             { "Onyxia", "Phase 2: kill whelps, don't stand under her. Phase 3: avoid the eruption cracks; tank faces her away." },
         },
+        notes = { "Returning on WoW Forever on December 9, 2026; attunement through the Drakefire Amulet" },
+    },
+    {
+        id = "barrow", name = "Barrow Deeps", size = 20, where = "Entrances from Blackmaw Hold, Hyjal and Winterspring", forever = "2026-11-19",
+        bosses = {},
+        notes = { "New WoW Forever raid, opening December 9, 2026", "Bosses and loot not published yet", "Raid size not announced; listed with the 20-player raids for now" },
+    },
+    {
+        id = "hyjal", name = "Hyjal Summit", size = 20, where = "Mount Hyjal", forever = "2026-11-19",
+        bosses = {},
+        notes = { "WoW Forever raid, opening December 9, 2026", "Bosses and loot not published yet", "Raid size not announced; listed with the 20-player raids for now" },
     },
     {
         id = "mc", name = "Molten Core", areas = { 2717 }, size = 40, where = "Blackrock Mountain",

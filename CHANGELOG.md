@@ -4,6 +4,13 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## Unreleased
 
+## 0.8.2
+
+- **Every boss's loot in WoW Forever's new dungeons, with item IDs.** 190 drops across Hall of Thanes, Ruins of Lordaeron, Excavation Site, City of Dalaran, The Drowned City, Krol'dok Stronghold, Alcaz Prison, Blackmaw Hold and Shaper's Terrace, read from QuestieDB's WoW Forever database (November 19) and checked against the Gear, Boss & Loot Watch. The Journal links each drop, and Best in Slot now weighs all of them. New: Highland Horror's drops, the Lordaeron Captain's plans and patterns, Linken's Boots of Iron from any Drowned City boss; Phantom Armor is no longer listed for the Lordaeron Captain (it's an old Shadowfang Keep drop).
+- **Bosses for the newer dungeons.** The Drowned City (six bosses), Krol'dok Stronghold (six), Alcaz Prison (seven), Blackmaw Hold (seven, with tactics for each: kill the ritualists before Bonesnout, Fear Ward for Withermaw, Clawbert before the Behemoth, interrupt Varrox) and Shaper's Terrace (Vitrix, Snowtalon, Cinder), with their quests and notes.
+- **December raids.** Barrow Deeps and Hyjal Summit are listed (opening December 9, bosses not published yet), and Onyxia's Lair notes her return with the Drakefire Amulet attunement.
+- Quest items in loot lists stay out of gear advice.
+
 ## 0.8.1
 
 - **Best in Slot tab**: a banner with your name, level, race and spec, and how close your gear is to your best (a rating bar and how many of your best pieces you wear); your character in a beam of light in Codex's color, standing on a slowly turning arcane circle; framed slots with an upgrade badge (+12%, or NEW for an empty slot) on each piece better than yours, and a green check on each piece you wear that is already your best; and your character in the middle with every slot around it, each showing the best piece you can get and wear at your level and where it drops (boss and dungeon, trash, or a dungeon quest reward). It looks through the Journal's dungeon and raid loot and what you wear now, counts only what your class can use at your level, and scores pieces by Ruinous Forever Planner when it's installed, else Codex's weights for your spec. A two-hander is weighed against the best main hand and off hand together. Switch to Your gear to see what you wear in each slot, with the best piece for it beside. Drag the character to turn it, click a piece to link it. It's the first tab, where Codex opens. Also /codex bis.
