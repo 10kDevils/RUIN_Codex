@@ -190,12 +190,20 @@ local function asked(id)
     return false
 end
 
+local askedAt, GIVE_UP = {}, 20     -- item id -> when it was first asked for; seconds to wait
+
 -- one candidate's facts, or nil when it can't be worn now (or isn't loaded)
 local function judge(c, level, key)
     local cm = M()
     local name, link, quality, _, minLevel, _, _, _, loc = GetItemInfo(c.link or c.id)
     if not name then
+        -- some IDs in the loot lists are items this server doesn't have: after
+        -- a while with no answer, stop waiting for them
+        local now = GetTime and GetTime() or 0
+        local first = askedAt[c.id]
+        if not first then first = now; askedAt[c.id] = now end
         asked(c.id)
+        if now - first > GIVE_UP then return nil end
         return nil, true
     end
     if not c.worn then
@@ -298,6 +306,7 @@ local ui = {}
 G.UI = ui
 
 local QUALITY_FALLBACK = { [0] = "ff9d9d9d", "ffffffff", "ff1eff00", "ff0070dd", "ffa335ee", "ffff8000" }
+
 -- "|cffrrggbb" for an item quality
 local function qualityColor(q)
     local h
@@ -333,91 +342,395 @@ local function emptyTexture(slot)
     return "Interface\\PaperDoll\\UI-Backpack-EmptySlot"
 end
 
--- how the best piece stands against what you wear in that slot
-local function verdict(slot, e, res)
-    if not e then return C.dim .. "Nothing found yet|r" end
-    local worn = GetInventoryItemLink and GetInventoryItemLink("player", slot)
-    local wornId = worn and tonumber(worn:match("item:(%d+)"))
-    if wornId == e.id then return C.good .. "Equipped|r" end
-    if e.worn then return C.dim .. "Wearing it in another slot|r" end
-    return C.dim .. table.concat(e.src, "; ") .. "|r"
+---------------------------------------------------------------------------
+-- Drawing helpers: gradients, gold trim, diamonds
+---------------------------------------------------------------------------
+local GOLD = { 0.86, 0.69, 0.38 }
+local GOLD_HI = { 1.00, 0.86, 0.55 }
+
+-- Vertical: from the bottom color to the top; horizontal: left to right.
+local function gradient(t, orient, a, b)
+    t:SetColorTexture(1, 1, 1, 1)
+    if t.SetGradient and CreateColor then
+        local ok = pcall(t.SetGradient, t, orient, CreateColor(a[1], a[2], a[3], a[4]), CreateColor(b[1], b[2], b[3], b[4]))
+        if ok then return end
+    end
+    if t.SetGradientAlpha then
+        t:SetGradientAlpha(orient, a[1], a[2], a[3], a[4], b[1], b[2], b[3], b[4])
+    else
+        t:SetColorTexture(a[1], a[2], a[3], (a[4] + b[4]) / 2)
+    end
 end
 
-local function slotWidget(parent, slot, side)
-    local b = CreateFrame("Button", nil, parent)
-    b:SetSize(36, 36)
-    b.slot = slot
-    b.icon = b:CreateTexture(nil, "ARTWORK")
-    b.icon:SetAllPoints()
-    b.edge = b:CreateTexture(nil, "OVERLAY")
-    b.edge:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
-    b.edge:SetBlendMode("ADD")
-    b.edge:SetSize(64, 64)
-    b.edge:SetPoint("CENTER")
-    b.edge:Hide()
-    b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
-    b.name = W.Label(parent, "", "GameFontNormalSmall")
-    b.sub = W.Label(parent, "", "GameFontHighlightSmall")
-    for _, fs in ipairs({ b.name, b.sub }) do
-        fs:SetWordWrap(false)
-        fs:SetWidth(side == "bottom" and 150 or 190)
+local function solid(parent, layer, sub, c, a)
+    local t = parent:CreateTexture(nil, layer or "ARTWORK", nil, sub or 0)
+    t:SetColorTexture(c[1], c[2], c[3], a or 1)
+    return t
+end
+
+-- a small diamond (a square turned 45 degrees), with an optional jewel inside
+local function diamond(parent, size, c, a, layer)
+    local d = solid(parent, layer or "OVERLAY", 2, c, a)
+    d:SetSize(size, size)
+    if d.SetRotation then pcall(d.SetRotation, d, math.rad(45)) end
+    return d
+end
+local function jewel(parent, size, accent, layer)
+    local outer = diamond(parent, size, GOLD, 1, layer)
+    local inner = diamond(parent, math.max(2, size - 5), accent, 1, layer)
+    inner:SetDrawLayer(layer or "OVERLAY", 3)
+    inner:SetPoint("CENTER", outer, "CENTER")
+    outer.inner = inner
+    return outer
+end
+
+-- a gold line that fades out both ways from its middle, with a jewel there
+local function flourish(parent, width, accent)
+    local f = CreateFrame("Frame", nil, parent)
+    f:SetSize(width, 12)
+    local l = f:CreateTexture(nil, "ARTWORK")
+    l:SetHeight(1)
+    l:SetPoint("LEFT", 0, 0)
+    l:SetPoint("RIGHT", f, "CENTER", -6, 0)
+    gradient(l, "HORIZONTAL", { GOLD[1], GOLD[2], GOLD[3], 0 }, { GOLD[1], GOLD[2], GOLD[3], 0.9 })
+    local r = f:CreateTexture(nil, "ARTWORK")
+    r:SetHeight(1)
+    r:SetPoint("LEFT", f, "CENTER", 6, 0)
+    r:SetPoint("RIGHT", 0, 0)
+    gradient(r, "HORIZONTAL", { GOLD[1], GOLD[2], GOLD[3], 0.9 }, { GOLD[1], GOLD[2], GOLD[3], 0 })
+    local j = jewel(f, 9, accent)
+    j:SetPoint("CENTER")
+    return f
+end
+
+-- a rectangle of 1px lines inside f, inset by n, in color c
+local function trim(f, n, c, a, layer, sub)
+    local lines = {}
+    for _, side in ipairs({ "TOP", "BOTTOM", "LEFT", "RIGHT" }) do
+        local t = solid(f, layer or "BORDER", sub or 1, c, a)
+        if side == "TOP" or side == "BOTTOM" then
+            t:SetHeight(1)
+            t:SetPoint(side .. "LEFT", n, side == "TOP" and -n or n)
+            t:SetPoint(side .. "RIGHT", -n, side == "TOP" and -n or n)
+        else
+            t:SetWidth(1)
+            t:SetPoint("TOP" .. side, side == "LEFT" and n or -n, -n)
+            t:SetPoint("BOTTOM" .. side, side == "LEFT" and n or -n, n)
+        end
+        lines[side] = t
     end
-    if side == "right" then
-        b.name:SetPoint("TOPRIGHT", b, "TOPLEFT", -6, -2)
-        b.sub:SetPoint("TOPRIGHT", b.name, "BOTTOMRIGHT", 0, -2)
-        b.name:SetJustifyH("RIGHT"); b.sub:SetJustifyH("RIGHT")
+    return lines
+end
+
+-- gold corner pieces: an L of heavier lines with a jewel at the point
+local function corners(f, accent)
+    local len, w = 22, 2
+    for _, c in ipairs({ { "TOPLEFT", 1, -1 }, { "TOPRIGHT", -1, -1 }, { "BOTTOMLEFT", 1, 1 }, { "BOTTOMRIGHT", -1, 1 } }) do
+        local pt, sx, sy = c[1], c[2], c[3]
+        local h = solid(f, "OVERLAY", 1, GOLD_HI, 1)
+        h:SetSize(len, w)
+        h:SetPoint(pt, f, pt, -sx * 2, -sy * 2)
+        local v = solid(f, "OVERLAY", 1, GOLD_HI, 1)
+        v:SetSize(w, len)
+        v:SetPoint(pt, f, pt, -sx * 2, -sy * 2)
+        local j = jewel(f, 9, accent)
+        j:SetPoint("CENTER", f, pt, -sx * 1, -sy * 1)
+    end
+end
+
+---------------------------------------------------------------------------
+-- The stage: your race's dressing room scenery, lit from below in Codex's
+-- color, framed in gold
+---------------------------------------------------------------------------
+local function accentOf(page)
+    local ok, scheme = pcall(W.SchemeOf, page)
+    return (ok and scheme and scheme.accent) or W.PALETTE.glow or { 0.62, 0.46, 0.92 }
+end
+
+local function raceScenery(tex)
+    if not (UnitRace and tex.SetAtlas) then return false end
+    local _, race = UnitRace("player")
+    if type(race) ~= "string" then return false end
+    local name = "dressingroom-background-" .. race:lower()
+    local exists = true
+    if C_Texture and C_Texture.GetAtlasInfo then
+        local ok, info = pcall(C_Texture.GetAtlasInfo, name)
+        exists = ok and info ~= nil
+    end
+    if not exists then return false end
+    return (pcall(tex.SetAtlas, tex, name))
+end
+
+local function buildStage(page, ac)
+    local stage = CreateFrame("Frame", nil, page)
+    W.Skin(stage, "bg", 1, "line")
+    local r, g, b = ac[1], ac[2], ac[3]
+    local function layer(sub) return stage:CreateTexture(nil, "BACKGROUND", nil, sub) end
+
+    local scene = layer(-6)
+    scene:SetPoint("TOPLEFT", 1, -1)
+    scene:SetPoint("BOTTOMRIGHT", -1, 1)
+    if raceScenery(scene) then
+        scene:SetAlpha(0.55)
+        if scene.SetDesaturated then scene:SetDesaturated(false) end
     else
-        b.name:SetPoint("TOPLEFT", b, "TOPRIGHT", 6, -2)
-        b.sub:SetPoint("TOPLEFT", b.name, "BOTTOMLEFT", 0, -2)
-        b.name:SetJustifyH("LEFT"); b.sub:SetJustifyH("LEFT")
+        scene:Hide()
     end
-    b:SetScript("OnEnter", function(self)
+    -- tint the scenery toward Codex's color, and light it from below
+    local wash = layer(-5)
+    wash:SetAllPoints(scene)
+    gradient(wash, "VERTICAL", { r * 0.25, g * 0.25, b * 0.25, 0.55 }, { 0.02, 0.02, 0.05, 0.75 })
+    local rise = layer(-4)
+    rise:SetPoint("BOTTOMLEFT", 1, 1)
+    rise:SetPoint("BOTTOMRIGHT", -1, 1)
+    rise:SetPoint("TOP", stage, "CENTER", 0, 0)
+    gradient(rise, "VERTICAL", { r, g, b, 0.38 }, { r, g, b, 0 })
+    -- darker at the sides
+    for _, side in ipairs({ "LEFT", "RIGHT" }) do
+        local v = layer(-3)
+        v:SetPoint("TOP" .. side, side == "LEFT" and 1 or -1, -1)
+        v:SetPoint("BOTTOM" .. side, side == "LEFT" and 1 or -1, 1)
+        v:SetWidth(60)
+        if side == "LEFT" then gradient(v, "HORIZONTAL", { 0, 0, 0, 0.6 }, { 0, 0, 0, 0 })
+        else gradient(v, "HORIZONTAL", { 0, 0, 0, 0 }, { 0, 0, 0, 0.6 }) end
+    end
+    local topShade = layer(-3)
+    topShade:SetPoint("TOPLEFT", 1, -1)
+    topShade:SetPoint("TOPRIGHT", -1, -1)
+    topShade:SetHeight(70)
+    gradient(topShade, "VERTICAL", { 0, 0, 0, 0 }, { 0, 0, 0, 0.55 })
+
+    -- the floor: a shadow under the feet, a pool of light, and a line of it
+    local FLOOR = 46
+    local MASK = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask"
+    local pool = stage:CreateTexture(nil, "BACKGROUND", nil, -2)
+    pool:SetTexture(MASK)
+    pool:SetSize(300, 70)
+    pool:SetPoint("CENTER", stage, "BOTTOM", 0, FLOOR)
+    pool:SetVertexColor(r, g, b, 0.30)
+    pool:SetBlendMode("ADD")
+    local shadow = stage:CreateTexture(nil, "BACKGROUND", nil, -1)
+    shadow:SetTexture(MASK)
+    shadow:SetSize(150, 26)
+    shadow:SetPoint("CENTER", stage, "BOTTOM", 0, FLOOR + 2)
+    shadow:SetVertexColor(0, 0, 0, 0.65)
+    local line = stage:CreateTexture(nil, "ARTWORK")
+    line:SetHeight(1)
+    line:SetPoint("LEFT", stage, "BOTTOMLEFT", 30, FLOOR)
+    line:SetPoint("RIGHT", stage, "BOTTOM", 0, FLOOR)
+    gradient(line, "HORIZONTAL", { r, g, b, 0 }, { r * 0.6 + 0.4, g * 0.6 + 0.4, b * 0.6 + 0.4, 0.7 })
+    local line2 = stage:CreateTexture(nil, "ARTWORK")
+    line2:SetHeight(1)
+    line2:SetPoint("LEFT", stage, "BOTTOM", 0, FLOOR)
+    line2:SetPoint("RIGHT", stage, "BOTTOMRIGHT", -30, FLOOR)
+    gradient(line2, "HORIZONTAL", { r * 0.6 + 0.4, g * 0.6 + 0.4, b * 0.6 + 0.4, 0.7 }, { r, g, b, 0 })
+
+    -- the frame: gold outside, a fainter gold line inside, corner pieces
+    for _, e in pairs(stage.skinEdges or {}) do e:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.95) end
+    trim(stage, 4, GOLD, 0.35, "BORDER", 2)
+    corners(stage, ac)
+    -- a crest on the top edge and a jewel on the bottom
+    local crest = flourish(stage, 160, ac)
+    crest:SetPoint("CENTER", stage, "TOP", 0, 0)
+    crest:SetFrameLevel(stage:GetFrameLevel() + 5)
+    local foot = jewel(stage, 11, ac)
+    foot:SetPoint("CENTER", stage, "BOTTOM", 0, 0)
+    stage.floor = FLOOR
+    return stage
+end
+
+---------------------------------------------------------------------------
+-- Slots
+---------------------------------------------------------------------------
+local function setFrameColor(holder, r, g, b, a)
+    for _, e in pairs(holder.skinEdges or {}) do e:SetColorTexture(r, g, b, a or 1) end
+end
+
+local function slotWidget(parent, slot, side, ac)
+    local holder = CreateFrame("Button", nil, parent)
+    holder:SetSize(42, 42)
+    W.Skin(holder, "bg", 1, "line")
+    holder.slot = slot
+    holder.side = side
+    holder.icon = holder:CreateTexture(nil, "ARTWORK")
+    holder.icon:SetPoint("TOPLEFT", 3, -3)
+    holder.icon:SetPoint("BOTTOMRIGHT", -3, 3)
+    holder.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    holder.inner = trim(holder, 2, { 0, 0, 0 }, 0.9, "OVERLAY", 1)
+    holder.glow = holder:CreateTexture(nil, "OVERLAY", nil, 2)
+    holder.glow:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
+    holder.glow:SetBlendMode("ADD")
+    holder.glow:SetSize(76, 76)
+    holder.glow:SetPoint("CENTER")
+    holder.glow:Hide()
+    holder:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+    -- the upgrade badge on the icon's corner
+    holder.badge = holder:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+    holder.badge:SetPoint("BOTTOMRIGHT", holder, "BOTTOMRIGHT", -2, 3)
+    -- a band of light behind the words, fading away from the icon
+    local strip = parent:CreateTexture(nil, "BACKGROUND", nil, 1)
+    strip:SetHeight(42)
+    local r, g, b = ac[1], ac[2], ac[3]
+    local W_STRIP = side == "bottom" and 170 or 210
+    if side == "right" then
+        strip:SetPoint("RIGHT", holder, "LEFT", 0, 0)
+        strip:SetWidth(W_STRIP)
+        gradient(strip, "HORIZONTAL", { r, g, b, 0 }, { r, g, b, 0.16 })
+    else
+        strip:SetPoint("LEFT", holder, "RIGHT", 0, 0)
+        strip:SetWidth(W_STRIP)
+        gradient(strip, "HORIZONTAL", { r, g, b, 0.16 }, { r, g, b, 0 })
+    end
+    holder.strip = strip
+    -- slot name in small capitals, the item, and where it comes from
+    holder.cap = parent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    holder.name = W.Label(parent, "", "GameFontNormal")
+    holder.sub = W.Label(parent, "", "GameFontHighlightSmall")
+    local width = side == "bottom" and 150 or 190
+    for _, fs in ipairs({ holder.cap, holder.name, holder.sub }) do
+        fs:SetWordWrap(false)
+        fs:SetWidth(width)
+    end
+    holder.cap:SetText(((SLOT_INFO[slot] and SLOT_INFO[slot][2]) or ""):upper())
+    holder.cap:SetTextColor(GOLD[1], GOLD[2], GOLD[3], 0.75)
+    if side == "right" then
+        holder.cap:SetPoint("TOPRIGHT", holder, "TOPLEFT", -8, 1)
+        holder.name:SetPoint("TOPRIGHT", holder.cap, "BOTTOMRIGHT", 0, -1)
+        holder.sub:SetPoint("TOPRIGHT", holder.name, "BOTTOMRIGHT", 0, -1)
+        for _, fs in ipairs({ holder.cap, holder.name, holder.sub }) do fs:SetJustifyH("RIGHT") end
+    else
+        holder.cap:SetPoint("TOPLEFT", holder, "TOPRIGHT", 8, 1)
+        holder.name:SetPoint("TOPLEFT", holder.cap, "BOTTOMLEFT", 0, -1)
+        holder.sub:SetPoint("TOPLEFT", holder.name, "BOTTOMLEFT", 0, -1)
+        for _, fs in ipairs({ holder.cap, holder.name, holder.sub }) do fs:SetJustifyH("LEFT") end
+    end
+    holder:SetScript("OnEnter", function(self)
         local e = self.entry
         if not (e and GameTooltip) then return end
         GameTooltip:SetOwner(self, side == "right" and "ANCHOR_LEFT" or "ANCHOR_RIGHT")
         pcall(GameTooltip.SetHyperlink, GameTooltip, e.link)
         GameTooltip:AddLine(" ")
-        GameTooltip:AddLine("RUIN Codex: best in slot", 0.9, 0.7, 0.4)
-        for _, s in ipairs(e.src or {}) do GameTooltip:AddLine(s, 1, 1, 1, true) end
+        GameTooltip:AddLine(self.tipTitle or "RUIN Codex: best in slot", GOLD[1], GOLD[2], GOLD[3])
+        for _, s in ipairs(self.tipLines or e.src or {}) do GameTooltip:AddLine(s, 1, 1, 1, true) end
         GameTooltip:Show()
     end)
-    b:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
-    b:SetScript("OnClick", function(self, button)
+    holder:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+    holder:SetScript("OnClick", function(self, button)
         local cm = M()
         if self.entry and cm and cm.ShowItem then cm.ShowItem(self.entry.link, button) end
     end)
-    return b
+    return holder
 end
 
-local function paintSlot(b, e, res)
-    b.entry = e
+-- what you wear in a slot, in the same shape as a best-in-slot entry
+local function wornEntry(slot)
+    local link = GetInventoryItemLink and GetInventoryItemLink("player", slot)
+    local id = link and tonumber(link:match("item:(%d+)"))
+    if not id then return nil end
+    local name, _, quality = GetItemInfo(link)
+    return { id = id, link = link, name = name or (link:match("%[(.-)%]")) or "item", quality = quality or 1, src = { "Equipped" }, worn = true }
+end
+
+local function wornScore(slot)
+    local e = wornEntry(slot)
+    if not e then return 0 end
+    return scoreOf(e.id, e.link, scoreKey()) or 0
+end
+
+local function isWorn(id)
+    if not (id and GetInventoryItemLink) then return false end
+    for slot in pairs(SLOT_INFO) do
+        local l = GetInventoryItemLink("player", slot)
+        if l and tonumber(l:match("item:(%d+)")) == id then return true end
+    end
+    return false
+end
+
+-- an item in a slot: icon, quality frame and glow
+local function showItem(b, e)
     if e then
         b.icon:SetTexture(itemIcon(e.id) or emptyTexture(b.slot))
         b.icon:SetDesaturated(false)
+        b.icon:SetAlpha(1)
         local r, g, bl = qualityRGB(e.quality)
-        b.edge:SetVertexColor(r, g, bl, 0.8)
-        b.edge:SetShown((e.quality or 1) >= 2)
+        setFrameColor(b, r, g, bl, (e.quality or 1) >= 2 and 1 or 0.6)
+        b.glow:SetVertexColor(r, g, bl, 0.55)
+        b.glow:SetShown((e.quality or 1) >= 3)
         b.name:SetText(qualityColor(e.quality) .. e.name .. "|r")
-        b.sub:SetText(verdict(b.slot, e, res))
     else
         b.icon:SetTexture(emptyTexture(b.slot))
         b.icon:SetDesaturated(true)
-        b.edge:Hide()
-        local label = SLOT_INFO[b.slot] and SLOT_INFO[b.slot][2] or ""
-        if b.slot == 17 and res and res.slots.twoHand then
-            b.name:SetText(C.dim .. "Off Hand|r")
-            b.sub:SetText(C.dim .. "Two-hander in the main hand|r")
-        elseif b.slot == 18 and not G.HasRangedSlot() then
-            b.name:SetText(C.dim .. "Ranged|r")
-            b.sub:SetText(C.dim .. "Goes in the main hand here|r")
-        else
-            b.name:SetText(C.dim .. label .. "|r")
-            b.sub:SetText(C.dim .. (res and "Nothing found yet" or "") .. "|r")
-        end
+        b.icon:SetAlpha(0.6)
+        setFrameColor(b, GOLD[1], GOLD[2], GOLD[3], 0.35)
+        b.glow:Hide()
     end
 end
 
--- the model wears your best pieces, or your own gear
+-- "+12%", "NEW" or nothing, for the best piece against what you wear
+local function upgradeBadge(slot, e)
+    if not e or isWorn(e.id) then return "" end
+    local have = wornScore(slot)
+    if have <= 0 then return C.good .. "NEW|r" end
+    local pct = math.floor((e.score - have) / have * 100 + 0.5)
+    if pct < 1 then return "" end
+    return C.good .. "+" .. pct .. "%|r"
+end
+
+-- "Best in slot" view
+local function paintBest(b, res)
+    local e = res and res.slots[b.slot]
+    b.entry = e
+    showItem(b, e)
+    b.tipTitle, b.tipLines = nil, nil
+    if e then
+        b.badge:SetText(upgradeBadge(b.slot, e))
+        if isWorn(e.id) then
+            b.sub:SetText(C.good .. "Equipped|r")
+        else
+            b.sub:SetText(C.dim .. table.concat(e.src, "; ") .. "|r")
+        end
+        return
+    end
+    b.badge:SetText("")
+    if b.slot == 17 and res and res.slots.twoHand then
+        b.name:SetText(C.dim .. "Two-hander equipped|r")
+        b.sub:SetText(C.dim .. "Your main hand takes both hands|r")
+    elseif b.slot == 18 and not G.HasRangedSlot() then
+        b.name:SetText(C.dim .. "No ranged slot|r")
+        b.sub:SetText(C.dim .. "Ranged weapons go in the main hand|r")
+    else
+        b.name:SetText(C.dim .. (res and "Nothing found yet" or "") .. "|r")
+        b.sub:SetText("")
+    end
+end
+
+-- "Your gear" view: what you wear, and the best piece beside it
+local function paintWorn(b, res)
+    local e = wornEntry(b.slot)
+    local top = res and res.slots[b.slot]
+    b.entry = e
+    showItem(b, e)
+    b.badge:SetText("")
+    b.tipTitle = "RUIN Codex"
+    b.tipLines = top and { "Best in slot: " .. top.name, table.concat(top.src or {}, "; ") } or nil
+    if not e then
+        b.name:SetText(C.dim .. "Empty|r")
+        b.sub:SetText(top and (C.dim .. "Best: |r" .. qualityColor(top.quality) .. top.name .. "|r") or "")
+        return
+    end
+    if top and (top.id == e.id or isWorn(top.id)) then
+        b.sub:SetText(C.good .. "Best in slot|r")
+    elseif top then
+        b.sub:SetText(C.dim .. "Best: |r" .. qualityColor(top.quality) .. top.name .. "|r")
+        b.badge:SetText(upgradeBadge(b.slot, top))
+    else
+        b.sub:SetText(C.good .. "Equipped|r")
+    end
+end
+
+---------------------------------------------------------------------------
+-- The model
+---------------------------------------------------------------------------
 local DRESS_ORDER = { 1, 3, 15, 5, 9, 10, 6, 7, 8, 16, 17, 18 }
 local function dressModel(force)
     local m = ui.model
@@ -443,124 +756,91 @@ local function dressModel(force)
     end
 end
 
--- A color gradient on a texture (newer clients take colors, older alphas).
--- Vertical: from the bottom color to the top one; horizontal: left to right.
-local function gradient(t, orient, a, b)
-    t:SetColorTexture(1, 1, 1, 1)
-    if t.SetGradient and CreateColor then
-        local ok = pcall(t.SetGradient, t, orient, CreateColor(a[1], a[2], a[3], a[4]), CreateColor(b[1], b[2], b[3], b[4]))
-        if ok then return end
-    end
-    if t.SetGradientAlpha then
-        t:SetGradientAlpha(orient, a[1], a[2], a[3], a[4], b[1], b[2], b[3], b[4])
-    else
-        t:SetColorTexture(a[1], a[2], a[3], (a[4] + b[4]) / 2)
-    end
-end
+---------------------------------------------------------------------------
+-- Building the page
+---------------------------------------------------------------------------
+local ROW = 47
+local TOP = 82           -- where the slots start, under the banner
 
--- The stage behind the character: a dark panel lit from below in Codex's
--- color, darker toward the top and the sides, with a soft glowing floor line.
-local function buildStage(page)
-    local stage = CreateFrame("Frame", nil, page)
-    stage:SetPoint("TOPLEFT", page, "TOPLEFT", 250, -36)
-    stage:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -250, 58)
-    W.Skin(stage, "bg", 0.9, "line")
-    local ok, scheme = pcall(W.SchemeOf, page)
-    local ac = (ok and scheme and scheme.accent) or W.PALETTE.glow or { 0.6, 0.45, 0.9 }
-    local r, g, b = ac[1], ac[2], ac[3]
-    local function layer(sub)
-        local t = stage:CreateTexture(nil, "BACKGROUND", nil, sub)
-        return t
-    end
-    -- light rising from the floor
-    local rise = layer(-5)
-    rise:SetPoint("BOTTOMLEFT", 1, 1)
-    rise:SetPoint("BOTTOMRIGHT", -1, 1)
-    rise:SetPoint("TOP", stage, "CENTER", 0, 40)
-    gradient(rise, "VERTICAL", { r, g, b, 0.34 }, { r, g, b, 0 })
-    -- a faint wash over the whole stage
-    local wash = layer(-6)
-    wash:SetPoint("TOPLEFT", 1, -1)
-    wash:SetPoint("BOTTOMRIGHT", -1, 1)
-    gradient(wash, "VERTICAL", { r * 0.35, g * 0.35, b * 0.35, 0.5 }, { 0, 0, 0, 0 })
-    -- darker toward the top
-    local top = layer(-4)
-    top:SetPoint("TOPLEFT", 1, -1)
-    top:SetPoint("TOPRIGHT", -1, -1)
-    top:SetPoint("BOTTOM", stage, "CENTER", 0, 30)
-    gradient(top, "VERTICAL", { 0, 0, 0, 0 }, { 0, 0, 0, 0.45 })
-    -- and toward the sides
-    local left = layer(-3)
-    left:SetPoint("TOPLEFT", 1, -1)
-    left:SetPoint("BOTTOMLEFT", 1, 1)
-    left:SetWidth(46)
-    gradient(left, "HORIZONTAL", { 0, 0, 0, 0.5 }, { 0, 0, 0, 0 })
-    local right = layer(-3)
-    right:SetPoint("TOPRIGHT", -1, -1)
-    right:SetPoint("BOTTOMRIGHT", -1, 1)
-    right:SetWidth(46)
-    gradient(right, "HORIZONTAL", { 0, 0, 0, 0 }, { 0, 0, 0, 0.5 })
-    -- the floor: a line of light, brightest under the character
-    local floorY = 34
-    local fl = stage:CreateTexture(nil, "ARTWORK")
-    fl:SetHeight(1)
-    fl:SetPoint("BOTTOMLEFT", stage, "BOTTOM", -120, floorY)
-    fl:SetPoint("BOTTOMRIGHT", stage, "BOTTOM", 0, floorY)
-    gradient(fl, "HORIZONTAL", { r, g, b, 0 }, { r, g, b, 0.9 })
-    local fr = stage:CreateTexture(nil, "ARTWORK")
-    fr:SetHeight(1)
-    fr:SetPoint("BOTTOMLEFT", stage, "BOTTOM", 0, floorY)
-    fr:SetPoint("BOTTOMRIGHT", stage, "BOTTOM", 120, floorY)
-    gradient(fr, "HORIZONTAL", { r, g, b, 0.9 }, { r, g, b, 0 })
-    -- a soft band of light just above the floor
-    local band = stage:CreateTexture(nil, "BACKGROUND", nil, -2)
-    band:SetPoint("BOTTOMLEFT", stage, "BOTTOM", -110, floorY)
-    band:SetPoint("BOTTOMRIGHT", stage, "BOTTOM", 110, floorY)
-    band:SetHeight(28)
-    gradient(band, "VERTICAL", { r, g, b, 0.22 }, { r, g, b, 0 })
-    ui.stage = stage
-    return stage
+local function classInfo()
+    local cname, class = "", nil
+    if UnitClass then cname, class = UnitClass("player") end
+    local race = UnitRace and UnitRace("player") or ""
+    local c = class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
+    return cname or "", race or "", c
 end
 
 function G.Build(page)
     ui.page = page
     ui.preview = "Wearing best in slot"
-    ui.info = W.Label(page, "", "GameFontHighlightSmall")
-    ui.info:SetPoint("TOPLEFT", 10, -8)
-    ui.info:SetPoint("RIGHT", page, "RIGHT", -190, 0)
-    ui.info:SetJustifyH("LEFT")
-    ui.previewCycle = W.Cycle(page, 170, { "Wearing best in slot", "Your gear" }, function() return ui.preview end,
-        function(v) ui.preview = v; G.Paint() end)
-    ui.previewCycle:SetPoint("TOPRIGHT", -10, -4)
-    ui.previewCycle.tip = "Show your best pieces, or what you have on now (with the best for each slot beside it)."
+    local ac = accentOf(page)
+    ui.accent = ac
 
+    -- banner: your name, level, race and spec, and how close your gear is
+    ui.nameText = page:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    ui.nameText:SetPoint("TOPLEFT", 14, -8)
+    ui.nameText:SetTextColor(GOLD_HI[1], GOLD_HI[2], GOLD_HI[3])
+    ui.title = page:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    ui.title:SetPoint("TOPLEFT", ui.nameText, "BOTTOMLEFT", 1, -3)
+    ui.info = W.Label(page, "", "GameFontHighlightSmall")
+    ui.info:SetPoint("TOPLEFT", ui.title, "BOTTOMLEFT", 0, -3)
+    ui.info:SetPoint("RIGHT", page, "CENTER", 60, 0)
+    ui.info:SetJustifyH("LEFT")
+    ui.info:SetWordWrap(false)
+
+    ui.previewCycle = W.Cycle(page, 190, { "Wearing best in slot", "Your gear" }, function() return ui.preview end,
+        function(v) ui.preview = v; G.Paint() end)
+    ui.previewCycle:SetPoint("TOPRIGHT", -12, -8)
+    ui.previewCycle.tip = "Show your best pieces, or what you have on now (with the best for each slot beside it)."
+    ui.ratingLabel = page:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    ui.ratingLabel:SetPoint("TOPRIGHT", ui.previewCycle, "BOTTOMRIGHT", 0, -8)
+    ui.ratingLabel:SetJustifyH("RIGHT")
+    ui.rating = W.Progress(page, 190, 8)
+    ui.rating:SetPoint("TOPRIGHT", ui.ratingLabel, "BOTTOMRIGHT", 0, -4)
+    for _, e in pairs(ui.rating.skinEdges or {}) do e:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.7) end
+    ui.rating.fill:SetColorTexture(ac[1], ac[2], ac[3], 1)
+    ui.rating.SetColor = function() end
+    ui.ratingHi = ui.rating:CreateTexture(nil, "OVERLAY")
+    ui.ratingHi:SetPoint("TOPLEFT", ui.rating.fill, "TOPLEFT")
+    ui.ratingHi:SetPoint("TOPRIGHT", ui.rating.fill, "TOPRIGHT")
+    ui.ratingHi:SetHeight(3)
+    gradient(ui.ratingHi, "VERTICAL", { 1, 1, 1, 0 }, { 1, 1, 1, 0.35 })
+
+    local rule = flourish(page, 520, ac)
+    rule:SetPoint("TOP", page, "TOP", 0, -TOP + 12)
+    rule:SetPoint("LEFT", page, "LEFT", 10, 0)
+    rule:SetPoint("RIGHT", page, "RIGHT", -10, 0)
+
+    -- the slots around the stage
     ui.slots = {}
     for i, slot in ipairs(LEFT) do
-        local b = slotWidget(page, slot, "left")
-        b:SetPoint("TOPLEFT", 10, -36 - (i - 1) * 44)
+        local b = slotWidget(page, slot, "left", ac)
+        b:SetPoint("TOPLEFT", 12, -TOP - (i - 1) * ROW)
         ui.slots[slot] = b
     end
     for i, slot in ipairs(RIGHT) do
-        local b = slotWidget(page, slot, "right")
-        b:SetPoint("TOPRIGHT", -10, -36 - (i - 1) * 44)
+        local b = slotWidget(page, slot, "right", ac)
+        b:SetPoint("TOPRIGHT", -12, -TOP - (i - 1) * ROW)
         ui.slots[slot] = b
     end
-    -- weapons along the bottom
     local bottom = { 16, 17, 18 }
     for i, slot in ipairs(bottom) do
-        local b = slotWidget(page, slot, "bottom")
-        b:SetPoint("BOTTOM", page, "BOTTOM", (i - 2) * 200 - 70, 10)
+        local b = slotWidget(page, slot, "bottom", ac)
+        b:SetPoint("BOTTOM", page, "BOTTOM", (i - 2) * 215 - 75, 10)
         ui.slots[slot] = b
     end
 
-    local stage = buildStage(page)
-    local ok, m = pcall(CreateFrame, "DressUpModel", nil, page)
+    -- the stage and the character on it
+    local stage = buildStage(page, ac)
+    stage:SetPoint("TOPLEFT", page, "TOPLEFT", 262, -TOP - 4)
+    stage:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -262, 70)
+    ui.stage = stage
+    local ok, m = pcall(CreateFrame, "DressUpModel", nil, stage)
     if ok and m then
-        m:SetPoint("TOPLEFT", stage, "TOPLEFT", 2, -2)
-        m:SetPoint("BOTTOMRIGHT", stage, "BOTTOMRIGHT", -2, 2)
+        m:SetPoint("TOPLEFT", stage, "TOPLEFT", 6, -14)
+        m:SetPoint("BOTTOMRIGHT", stage, "BOTTOMRIGHT", -6, stage.floor - 8)
         m:SetFrameLevel(stage:GetFrameLevel() + 2)
         if m.SetUnit then pcall(m.SetUnit, m, "player") end
-        -- shown again (the tab, the app): the game resets the model, so dress it again
         m:SetScript("OnShow", function(self)
             if self.SetUnit then pcall(self.SetUnit, self, "player") end
             if self.SetFacing then pcall(self.SetFacing, self, self.rot or 0) end
@@ -581,80 +861,78 @@ function G.Build(page)
         end)
         ui.model = m
     end
-    ui.hint = W.Label(page, C.dim .. "Drag to turn. Click a piece to link it.|r", "GameFontHighlightSmall")
-    if ui.stage then ui.hint:SetPoint("BOTTOM", ui.stage, "BOTTOM", 0, 8) end
+    ui.hint = stage:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    ui.hint:SetPoint("BOTTOM", stage, "BOTTOM", 0, 12)
+    ui.hint:SetText("Drag to turn  ·  Click a piece to link it")
+    ui.hint:SetAlpha(0.8)
 end
 
--- what you wear in a slot, in the same shape as a best-in-slot entry
-local function wornEntry(slot)
-    local link = GetInventoryItemLink and GetInventoryItemLink("player", slot)
-    local id = link and tonumber(link:match("item:(%d+)"))
-    if not id then return nil end
-    local name, _, quality = GetItemInfo(link)
-    return { id = id, link = link, name = name or (link:match("%[(.-)%]")) or "item", quality = quality or 1, src = { "Equipped" }, worn = true }
-end
+---------------------------------------------------------------------------
+-- Painting
+---------------------------------------------------------------------------
+local function paintBanner(res)
+    local cname, race, cc = classInfo()
+    local me = UnitName and UnitName("player") or ""
+    ui.nameText:SetText(me)
+    local spec = res and res.spec or (M() and M().MySpec and M().MySpec())
+    local level = (UnitLevel and UnitLevel("player")) or 0
+    local hex = cc and cc.colorStr or "ffffffff"
+    ui.title:SetText(("Level %d %s  |c%s%s%s|r"):format(level, race, hex, spec and (tostring(spec) .. " ") or "", cname))
 
--- "Your gear": each slot shows what you wear, and whether it's the best
-local function paintWorn(b, res)
-    local e = wornEntry(b.slot)
-    local top = res and res.slots[b.slot]
-    paintSlot(b, e, res)
-    if not e then
-        local label = SLOT_INFO[b.slot] and SLOT_INFO[b.slot][2] or ""
-        b.name:SetText(C.dim .. label .. "|r")
-        b.sub:SetText(top and (C.dim .. "Empty. Best: |r" .. qualityColor(top.quality) .. top.name .. "|r") or (C.dim .. "Empty|r"))
-        return
-    end
-    if top and top.id == e.id then
-        b.sub:SetText(C.good .. "Best in slot|r")
-    elseif top then
-        b.sub:SetText(C.dim .. "Best: |r" .. qualityColor(top.quality) .. top.name .. "|r")
+    local text
+    if state.running and not res then
+        text = C.dim .. ("Looking through the loot Codex knows... %d of %d|r"):format(state.done or 0, state.total or 0)
+    elseif res then
+        text = C.dim .. "Dungeon and raid loot you can wear now, scored by " .. res.by .. ".|r"
+        if (state.waiting or 0) > 0 then text = text .. C.dim .. (" Loading %d items...|r"):format(state.waiting) end
     else
-        b.sub:SetText(C.good .. "Equipped|r")
+        text = ""
     end
+    ui.info:SetText(text)
+
+    -- how close your gear is: your pieces' score against the best pieces'
+    local have, best, owned, slots = 0, 0, 0, 0
+    if res then
+        for slot in pairs(SLOT_INFO) do
+            local e = res.slots[slot]
+            if e then
+                slots = slots + 1
+                best = best + e.score
+                have = have + math.min(wornScore(slot), e.score)
+                if isWorn(e.id) then owned = owned + 1 end
+            end
+        end
+    end
+    local pct = best > 0 and have / best or 0
+    ui.rating:SetValue(pct)
+    ui.ratingLabel:SetText(res and ("%sGear %d%% of your best|r  %s%d of %d pieces|r"):format(C.gold or "", math.floor(pct * 100 + 0.5),
+        C.dim, owned, slots) or "")
 end
 
 local function paint()
     if not ui.page then return end
     local res = state.result
-    local cm = M()
-    if state.running and not res then
-        ui.info:SetText(C.dim .. ("Looking through the loot Codex knows... %d of %d"):format(state.done or 0, state.total or 0) .. "|r")
-    elseif res then
-        local text = ("Best pieces you can wear at level %d%s, scored by %s."):format(res.level,
-            res.spec and (" as " .. tostring(res.spec)) or "", res.by)
-        if res.waiting > 0 and not ui.gaveUp then
-            text = text .. C.dim .. (" Loading %d more items from the server..."):format(res.waiting) .. "|r"
-        end
-        ui.info:SetText(text)
-    end
+    paintBanner(res)
     local mine = ui.preview == "Your gear"
-    for slot, b in pairs(ui.slots or {}) do
-        if mine then paintWorn(b, res) else paintSlot(b, res and res.slots[slot] or nil, res) end
+    for _, b in pairs(ui.slots or {}) do
+        if mine then paintWorn(b, res) else paintBest(b, res) end
     end
     dressModel()
 end
 G.Paint = paint
 
--- Items still on their way from the server: look again in a few seconds, as
--- long as more keep arriving. Some IDs in the loot lists are items this
--- server doesn't have and never sends; after a few tries with nothing new,
--- stop asking and stop saying it's loading.
-local retryQueued, lastWaiting, stalls = false, nil, 0
-local MAX_STALLS = 3
-function G.Refresh(fromRetry)
+-- Items still on their way from the server: look again in a few seconds
+-- until they've come (items the server never sends stop counting after a
+-- while, see judge).
+local retryQueued = false
+function G.Refresh()
     if not (ui.page and ui.page:IsVisible()) then return end
-    if not fromRetry then stalls, lastWaiting, ui.gaveUp = 0, nil, false end
     paint()
     G.Compute(function()
-        local w = state.waiting or 0
-        if lastWaiting and w >= lastWaiting then stalls = stalls + 1 else stalls = 0 end
-        lastWaiting = w
-        if stalls >= MAX_STALLS then ui.gaveUp = true end
         paint()
-        if w > 0 and not ui.gaveUp and not retryQueued and C_Timer then
+        if (state.waiting or 0) > 0 and not retryQueued and C_Timer then
             retryQueued = true
-            C_Timer.After(3, function() retryQueued = false; G.Refresh(true) end)
+            C_Timer.After(3, function() retryQueued = false; G.Refresh() end)
         end
     end)
 end
