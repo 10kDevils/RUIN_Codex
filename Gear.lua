@@ -599,9 +599,12 @@ local function slotWidget(parent, slot, side, ac)
         if not (e and GameTooltip) then return end
         GameTooltip:SetOwner(self, side == "right" and "ANCHOR_LEFT" or "ANCHOR_RIGHT")
         pcall(GameTooltip.SetHyperlink, GameTooltip, e.link)
-        GameTooltip:AddLine(" ")
-        GameTooltip:AddLine(self.tipTitle or "RUIN Codex: best in slot", GOLD[1], GOLD[2], GOLD[3])
-        for _, s in ipairs(self.tipLines or e.src or {}) do GameTooltip:AddLine(s, 1, 1, 1, true) end
+        -- one line in Codex's voice; where a drop comes from is already in the
+        -- item's tooltip, so only sources it doesn't show (quests, trash) follow
+        for i, line in ipairs(self.tipLines or {}) do
+            if i == 1 then GameTooltip:AddLine(line, GOLD[1], GOLD[2], GOLD[3], true)
+            else GameTooltip:AddLine(line, 0.8, 0.8, 0.8, true) end
+        end
         GameTooltip:Show()
     end)
     holder:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
@@ -677,7 +680,14 @@ local function paintBest(b, res)
     b.entry = e
     showItem(b, e)
     setBisMark(b, e and isWorn(e.id))
-    b.tipTitle, b.tipLines = nil, nil
+    b.tipLines = nil
+    if e then
+        local lines = { isWorn(e.id) and "Codex: your best in slot, and you're wearing it" or "Codex: your best in slot" }
+        for _, src in ipairs(e.src or {}) do
+            if src:find("^Quest reward") or src:find("^Trash in") then lines[#lines + 1] = src end
+        end
+        b.tipLines = lines
+    end
     if e then
         b.badge:SetText(upgradeBadge(b.slot, e))
         if isWorn(e.id) then
@@ -708,8 +718,13 @@ local function paintWorn(b, res)
     showItem(b, e)
     b.badge:SetText("")
     setBisMark(b, e and top and (top.id == e.id or isWorn(top.id)))
-    b.tipTitle = "RUIN Codex"
-    b.tipLines = top and { "Best in slot: " .. top.name, table.concat(top.src or {}, "; ") } or nil
+    if top and e and (top.id == e.id or isWorn(top.id)) then
+        b.tipLines = { "Codex: your best in slot" }
+    elseif top then
+        b.tipLines = { "Codex: your best in slot is " .. top.name, table.concat(top.src or {}, "; ") }
+    else
+        b.tipLines = nil
+    end
     if not e then
         b.name:SetText(C.dim .. "Empty|r")
         b.sub:SetText(top and (C.dim .. "Best: |r" .. qualityColor(top.quality) .. top.name .. "|r") or "")
