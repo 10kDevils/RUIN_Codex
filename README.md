@@ -37,3 +37,6 @@ Items looted inside a dungeon or raid (item and instance): yours, and those of g
 
 ## Notes
 Dungeon and raid data are WoW Classic's as a placeholder, and the Journal says so: the sample Deadmines loot list is marked *Not checked on Forever*. Stat weights are a reasoned starting point, not simulation output; casters' Intellect, Spirit and mana per 5 count for more while leveling. Gear tracking (best-in-slot lists, a gear path) moved out of Codex in 0.3.10; RUIN will use a dedicated gear addon for it.
+
+## Credits
+Quest and item data checked against [ForeverDB.net](https://foreverdb.net). Quest rewards and WoW Forever dungeon loot from QuestieDB (GNU GPL v3; see `QuestData/LICENSE.md` and `QuestData/NOTICE.md`).

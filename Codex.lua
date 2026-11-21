@@ -30,7 +30,7 @@ local C = W.COLORS
 -- What the player lets RUIN share about them (RUIN Core: Settings > Display)
 local function shares(kind) return not (R.Shares and not R:Shares(kind)) end
 
-local M = R:RegisterModule("Codex", { version = "0.8.2" })
+local M = R:RegisterModule("Codex", { version = "0.8.3" })
 ns.Codex = M
 
 local DEFAULTS = { drops = {}, kills = {}, mobs = {}, collapsed = {}, tooltip = true, spec = "Auto", installed = {},

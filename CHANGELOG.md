@@ -4,6 +4,9 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## Unreleased
 
+## 0.8.3
+
+- **Quest rewards checked against ForeverDB's complete lists** (all 4,433 WoW Forever quests and 23,805 items, Nov 21). Every quest and dungeon drop RUIN knows was already there; Best in Slot gains the rewards it was missing: Glimmering Mithril Insignia (trinket) from Did You Lose This?, the four Kolkar rewards from Khan Hratha (WoW Forever's new Desolace quest; the older quests that gave them are kept), and the Silver Star from Scramble. Seven rewards the game's item list doesn't have are dropped, so the tab never suggests them: Old Blanchy's Blanket, Old Leather Belt, Old Leather Jacket, the Restless Souls reward and the three Scarlet Savant rewards (Cap of the Scarlet Savant, Leggings of Arcana, Breastplate of Bloodthirst).
 ## 0.8.2
 
 - **Every boss's loot in WoW Forever's new dungeons, with item IDs.** 190 drops across Hall of Thanes, Ruins of Lordaeron, Excavation Site, City of Dalaran, The Drowned City, Krol'dok Stronghold, Alcaz Prison, Blackmaw Hold and Shaper's Terrace, read from QuestieDB's WoW Forever database (November 19) and checked against the Gear, Boss & Loot Watch. The Journal links each drop, and Best in Slot now weighs all of them. New: Highland Horror's drops, the Lordaeron Captain's plans and patterns, Linken's Boots of Iron from any Drowned City boss; Phantom Armor is no longer listed for the Lordaeron Captain (it's an old Shadowfang Keep drop).
