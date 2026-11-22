@@ -110,8 +110,8 @@ end
 -- what's remembered between passes (see Compute): the candidates for your
 -- level, and each item's verdict for your spec. Gear, level, spec or a quest
 -- handed in clears them.
-local gathered, judged, gaveUp = nil, {}, {}
-function G.Forget() scores = {}; gathered = nil; judged = {}; G.stale = true end
+local gathered, judged, gaveUp = {}, {}, {}
+function G.Forget() scores = {}; gathered = {}; judged = {}; G.stale = true end
 
 ---------------------------------------------------------------------------
 -- Where items come from
@@ -124,12 +124,10 @@ local function gather(level)
     local fac = UnitFactionGroup and UnitFactionGroup("player") or "?"
     local classId = UnitClass and select(3, UnitClass("player")) or 0
     local gkey = level .. ":" .. tostring(fac) .. ":" .. tostring(classId)
-    if not (gathered and gathered.key == gkey) then
-        gathered = { key = gkey, list = gatherAll(level, false) }
-    end
+    if not gathered[gkey] then gathered[gkey] = gatherAll(level, false) end
     -- what you wear is read fresh each time (it's yours already)
     local out, seen = {}, {}
-    for _, c in ipairs(gathered.list) do
+    for _, c in ipairs(gathered[gkey]) do
         local copy = { id = c.id, src = c.src }
         seen[c.id] = copy
         out[#out + 1] = copy
@@ -263,11 +261,13 @@ local askedAt, GIVE_UP = {}, 20     -- item id -> when it was first asked for; s
 local judgeFresh
 local function judge(c, level, key)
     -- an item's verdict holds until gear, level or spec change (G.Forget);
-    -- what you wear is judged fresh
+    -- what you wear is judged fresh. Verdicts are kept per level looked at
+    -- (yours, and 60 for the endgame's best).
     if c.worn then return judgeFresh(c, level, key) end
     if gaveUp[c.id] then return nil end
-    local jk = judged[key]
-    if not jk then jk = {}; judged[key] = jk end
+    local jkey = key .. "@" .. level
+    local jk = judged[jkey]
+    if not jk then jk = {}; judged[jkey] = jk end
     local v = jk[c.id]
     if v ~= nil then
         if not v then return nil end
@@ -346,13 +346,16 @@ local function pick(byGroup)
 end
 
 -- Works through every candidate a few dozen a frame, then calls done().
-function G.Compute(done)
+local state60 = { running = false, dirty = false, result = nil, waiting = 0 }
+G.state60 = state60
+G.MAX_LEVEL = 60
+
+local function run(state, level, done, again)
     if state.running then state.dirty = true; return end
     local cm = M()
     if not cm then return end
     if cm.DungeonLoot and cm.DungeonLoot.Start then pcall(cm.DungeonLoot.Start) end
     state.running, state.dirty = true, false
-    local level = (UnitLevel and UnitLevel("player")) or 1
     local key = scoreKey()
     local cands = gather(level)
     local byGroup, waiting, i = {}, 0, 1
@@ -364,7 +367,7 @@ function G.Compute(done)
                          spec = cm.MySpec and cm.MySpec() }
         state.waiting = waiting
         if done then pcall(done) end
-        if state.dirty then C_Timer.After(0.5, function() G.Compute(done) end) end
+        if state.dirty then C_Timer.After(0.5, function() again(done) end) end
     end
     local clock = rawget(_G, "debugprofilestop")
     local function step()
@@ -387,6 +390,32 @@ function G.Compute(done)
         if i <= #cands and C_Timer then C_Timer.After(0, step) else finish() end
     end
     step()
+end
+
+function G.Compute(done)
+    run(state, (UnitLevel and UnitLevel("player")) or 1, done, G.Compute)
+end
+
+-- The best at the level cap, worked out after your own level's (at the cap
+-- they're the same). An equipped piece that's best at 60 gets a gold mark.
+function G.Compute60(done)
+    run(state60, G.MAX_LEVEL, done, G.Compute60)
+end
+
+function G.Result60()
+    local level = (UnitLevel and UnitLevel("player")) or 1
+    if level >= G.MAX_LEVEL then return state.result end
+    local r = state60.result
+    if r and r.key == scoreKey() then return r end
+end
+
+-- Is this worn item best in its slot at 60? (rings and trinkets: either of the pair)
+local PAIR = { [11] = 12, [12] = 11, [13] = 14, [14] = 13 }
+function G.BestAt60(slot, id)
+    local r = id and G.Result60()
+    if not r then return false end
+    local a, b = r.slots[slot], PAIR[slot] and r.slots[PAIR[slot]]
+    return (a and a.id == id) or (b and b.id == id) or false
 end
 
 ---------------------------------------------------------------------------
@@ -647,6 +676,28 @@ local function slotWidget(parent, slot, side, ac)
     holder.bisRing:SetSize(20, 20)
     holder.bisRing:SetPoint("CENTER", holder.bis, "CENTER")
     holder.bisRing:Hide()
+    -- best at level 60: a gold glow that breathes slowly round the piece
+    holder.crown = holder:CreateTexture(nil, "OVERLAY", nil, 1)
+    holder.crown:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
+    holder.crown:SetBlendMode("ADD")
+    holder.crown:SetVertexColor(1, 0.80, 0.30, 1)
+    holder.crown:SetSize(84, 84)
+    holder.crown:SetPoint("CENTER")
+    holder.crown:Hide()
+    if holder.crown.CreateAnimationGroup or holder.CreateAnimationGroup then
+        local ag = (holder.crown.CreateAnimationGroup and holder.crown:CreateAnimationGroup()) or holder:CreateAnimationGroup()
+        if ag and ag.CreateAnimation then
+            ag:SetLooping("BOUNCE")
+            local a = ag:CreateAnimation("Alpha")
+            if a then
+                if a.SetTarget then pcall(a.SetTarget, a, holder.crown) end
+                if a.SetFromAlpha then a:SetFromAlpha(0.35); a:SetToAlpha(1) end
+                if a.SetDuration then a:SetDuration(1.4) end
+                if a.SetSmoothing then a:SetSmoothing("IN_OUT") end
+            end
+            holder.crownPulse = ag
+        end
+    end
     -- a band of light behind the words, fading away from the icon
     local strip = holder:CreateTexture(nil, "BACKGROUND", nil, -6)
     strip:SetHeight(42)
@@ -771,9 +822,24 @@ local function upgradeBadge(slot, e)
     return C.good .. "+" .. pct .. "%|r"
 end
 
-local function setBisMark(b, on)
+-- the check: green when the piece you wear is your best now; gold, with a
+-- gold frame and a breathing glow, when it's the best at level 60 too
+local function setBisMark(b, on, at60)
     b.bis:SetShown(on and true or false)
     b.bisRing:SetShown(on and true or false)
+    if b.bis.SetDesaturated then b.bis:SetDesaturated(at60 and true or false) end
+    if at60 then
+        b.bis:SetVertexColor(1, 0.84, 0.25, 1)
+        b.bisRing:SetVertexColor(0.25, 0.16, 0, 0.9)
+        setFrameColor(b, 1, 0.80, 0.30, 1)
+        b.crown:Show()
+        if b.crownPulse and not b.crownPulse:IsPlaying() then b.crownPulse:Play() end
+    else
+        b.bis:SetVertexColor(1, 1, 1, 1)
+        b.bisRing:SetVertexColor(0, 0, 0, 0.75)
+        b.crown:Hide()
+        if b.crownPulse and b.crownPulse:IsPlaying() then b.crownPulse:Stop() end
+    end
 end
 
 -- "Best in slot" view
@@ -781,10 +847,12 @@ local function paintBest(b, res)
     local e = res and res.slots[b.slot]
     b.entry = e
     showItem(b, e)
-    setBisMark(b, e and isWorn(e.id))
+    local worn = e and isWorn(e.id)
+    local at60 = worn and G.BestAt60(b.slot, e.id)
+    setBisMark(b, worn, at60)
     b.tipLines = nil
     if e then
-        local lines = { isWorn(e.id) and "Codex: your best in slot, and you're wearing it" or "Codex: your best in slot" }
+        local lines = { at60 and "Codex: best in slot at level 60, and you're wearing it" or worn and "Codex: your best in slot, and you're wearing it" or "Codex: your best in slot" }
         for _, src in ipairs(e.src or {}) do
             if src:find("^Quest reward") or src:find("^Trash in") then lines[#lines + 1] = src end
         end
@@ -792,7 +860,9 @@ local function paintBest(b, res)
     end
     if e then
         b.badge:SetText(upgradeBadge(b.slot, e))
-        if isWorn(e.id) then
+        if at60 then
+            b.sub:SetText("|cffffd040Best in slot at 60|r")
+        elseif isWorn(e.id) then
             b.sub:SetText(C.good .. "Equipped|r")
         else
             b.sub:SetText(C.dim .. table.concat(e.src, "; ") .. "|r")
@@ -819,7 +889,8 @@ local function paintWorn(b, res)
     b.entry = e
     showItem(b, e)
     b.badge:SetText("")
-    setBisMark(b, e and top and (top.id == e.id or isWorn(top.id)))
+    local at60 = e and G.BestAt60(b.slot, e.id)
+    setBisMark(b, (e and top and (top.id == e.id or isWorn(top.id))) or at60, at60)
     if top and e and (top.id == e.id or isWorn(top.id)) then
         b.tipLines = { "Codex: your best in slot" }
     elseif top then
@@ -832,7 +903,10 @@ local function paintWorn(b, res)
         b.sub:SetText(top and (C.dim .. "Best: |r" .. qualityColor(top.quality) .. top.name .. "|r") or "")
         return
     end
-    if top and (top.id == e.id or isWorn(top.id)) then
+    if at60 then
+        b.sub:SetText("|cffffd040Best in slot at 60|r")
+        b.tipLines = { "Codex: best in slot at level 60" }
+    elseif top and (top.id == e.id or isWorn(top.id)) then
         b.sub:SetText(C.good .. "Best in slot|r")
     elseif top then
         b.sub:SetText(C.dim .. "Best: |r" .. qualityColor(top.quality) .. top.name .. "|r")
@@ -1047,7 +1121,7 @@ local function paintBanner(res)
     if state.running and not res then
         text = C.dim .. ("Looking through the loot Codex knows... %d of %d|r"):format(state.done or 0, state.total or 0)
     elseif res then
-        text = C.dim .. "Dungeon and raid loot you can wear now, scored by " .. res.by .. ".|r"
+        text = C.dim .. "Dungeon and raid loot you can wear now, scored by " .. tostring(res.by or "Codex") .. ".|r"
         if (state.waiting or 0) > 0 then text = text .. C.dim .. (" Loading %d items...|r"):format(state.waiting) end
     else
         text = ""
@@ -1095,10 +1169,17 @@ function G.Refresh()
     if not (ui.page and ui.page:IsVisible()) then return end
     paint()
     -- settled (nothing changed, nothing still loading): no need to look again
-    if state.result and not G.stale and (state.waiting or 0) == 0 and not state.running and state.result.key == scoreKey() then return end
-    G.stale = false
+    local level = (UnitLevel and UnitLevel("player")) or 1
+    local need60 = level < G.MAX_LEVEL and not state60.running
+        and (not state60.result or state60.result.key ~= scoreKey() or (state60.waiting or 0) > 0 or G.stale60)
+    if state.result and not G.stale and (state.waiting or 0) == 0 and not state.running and state.result.key == scoreKey() then
+        if need60 then G.stale60 = false; G.Compute60(paint) end
+        return
+    end
+    G.stale, G.stale60 = false, true
     G.Compute(function()
         paint()
+        if level < G.MAX_LEVEL then G.stale60 = false; G.Compute60(paint) end
         if (state.waiting or 0) > 0 and not retryQueued and C_Timer then
             retryQueued = true
             C_Timer.After(3, function() retryQueued = false; G.Refresh() end)
