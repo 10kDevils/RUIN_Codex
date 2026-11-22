@@ -107,7 +107,11 @@ local function scoreOf(id, link, key)
     t[id] = s or false
     return s
 end
-function G.Forget() scores = {} end
+-- what's remembered between passes (see Compute): the candidates for your
+-- level, and each item's verdict for your spec. Gear, level, spec or a quest
+-- handed in clears them.
+local gathered, judged, gaveUp = nil, {}, {}
+function G.Forget() scores = {}; gathered = nil; judged = {}; G.stale = true end
 
 ---------------------------------------------------------------------------
 -- Where items come from
@@ -115,7 +119,37 @@ function G.Forget() scores = {} end
 local function lowLevel(dg) return tonumber((dg.levels or ""):match("^(%d+)")) or 0 end
 
 -- every candidate: { id, src = { "Boss, Dungeon", ... } }
+local gatherAll
 local function gather(level)
+    local fac = UnitFactionGroup and UnitFactionGroup("player") or "?"
+    local classId = UnitClass and select(3, UnitClass("player")) or 0
+    local gkey = level .. ":" .. tostring(fac) .. ":" .. tostring(classId)
+    if not (gathered and gathered.key == gkey) then
+        gathered = { key = gkey, list = gatherAll(level, false) }
+    end
+    -- what you wear is read fresh each time (it's yours already)
+    local out, seen = {}, {}
+    for _, c in ipairs(gathered.list) do
+        local copy = { id = c.id, src = c.src }
+        seen[c.id] = copy
+        out[#out + 1] = copy
+    end
+    if GetInventoryItemLink then
+        for slot in pairs(SLOT_INFO) do
+            local l = GetInventoryItemLink("player", slot)
+            local id = l and tonumber(l:match("item:(%d+)"))
+            if id then
+                local c = seen[id]
+                if not c then c = { id = id, src = {} }; seen[id] = c; out[#out + 1] = c end
+                if #c.src < 3 then c.src[#c.src + 1] = "Equipped" end
+                c.link, c.worn = l, true
+            end
+        end
+    end
+    return out
+end
+
+gatherAll = function(level, withWorn)
     local out, seen = {}, {}
     local function add(id, src)
         id = tonumber(id)
@@ -192,7 +226,7 @@ local function gather(level)
         end
     end
     -- what you wear counts too: it's yours already
-    if GetInventoryItemLink then
+    if withWorn and GetInventoryItemLink then
         for slot in pairs(SLOT_INFO) do
             local l = GetInventoryItemLink("player", slot)
             local id = l and tonumber(l:match("item:(%d+)"))
@@ -212,7 +246,8 @@ G.Gather = gather
 ---------------------------------------------------------------------------
 local state = { running = false, dirty = false, result = nil, waiting = 0 }
 G.state = state
-local CHUNK = 60
+local CHUNK = 60           -- candidates a frame, where the game has no clock to budget by
+G.FRAME_BUDGET = 4         -- milliseconds of work a frame, at most (it never takes the frame rate down)
 
 local function asked(id)
     if R.Items and R.Items.IsCached and not R.Items.IsCached(id) then
@@ -225,7 +260,26 @@ end
 local askedAt, GIVE_UP = {}, 20     -- item id -> when it was first asked for; seconds to wait
 
 -- one candidate's facts, or nil when it can't be worn now (or isn't loaded)
+local judgeFresh
 local function judge(c, level, key)
+    -- an item's verdict holds until gear, level or spec change (G.Forget);
+    -- what you wear is judged fresh
+    if c.worn then return judgeFresh(c, level, key) end
+    if gaveUp[c.id] then return nil end
+    local jk = judged[key]
+    if not jk then jk = {}; judged[key] = jk end
+    local v = jk[c.id]
+    if v ~= nil then
+        if not v then return nil end
+        return { id = v.id, link = v.link, name = v.name, quality = v.quality, loc = v.loc, group = v.group,
+                 score = v.score, src = c.src, minLevel = v.minLevel }
+    end
+    local e, pending = judgeFresh(c, level, key)
+    if not pending then jk[c.id] = e or false end
+    return e, pending
+end
+
+judgeFresh = function(c, level, key)
     local cm = M()
     local name, link, quality, _, minLevel, _, _, _, loc = GetItemInfo(c.link or c.id)
     if not name then
@@ -235,7 +289,7 @@ local function judge(c, level, key)
         local first = askedAt[c.id]
         if not first then first = now; askedAt[c.id] = now end
         asked(c.id)
-        if now - first > GIVE_UP then return nil end
+        if now - first > GIVE_UP then gaveUp[c.id] = true; return nil end
         return nil, true
     end
     if not c.worn then
@@ -305,16 +359,20 @@ function G.Compute(done)
     state.total, state.done = #cands, 0
     local function finish()
         state.running = false
-        state.result = { slots = pick(byGroup), level = level, waiting = waiting, total = #cands,
+        state.result = { slots = pick(byGroup), level = level, waiting = waiting, total = #cands, key = key,
                          by = planner() and "Ruinous Forever Planner" or "Codex's stat weights",
                          spec = cm.MySpec and cm.MySpec() }
         state.waiting = waiting
         if done then pcall(done) end
         if state.dirty then C_Timer.After(0.5, function() G.Compute(done) end) end
     end
+    local clock = rawget(_G, "debugprofilestop")
     local function step()
         local stop = math.min(i + CHUNK - 1, #cands)
+        local t0 = clock and clock()
+        if t0 then stop = #cands end
         while i <= stop do
+            if t0 and clock() - t0 > G.FRAME_BUDGET then break end
             local ok, e, pending = pcall(judge, cands[i], level, key)
             if ok and e then
                 local l = byGroup[e.group] or {}
@@ -658,19 +716,29 @@ local function wornEntry(slot)
     return { id = id, link = link, name = name or (link:match("%[(.-)%]")) or "item", quality = quality or 1, src = { "Equipped" }, worn = true }
 end
 
+-- what you wear, read once a paint (not again for every slot and line)
+local wornNow
+local function readWorn()
+    local w = { ids = {}, score = {}, key = scoreKey() }
+    if GetInventoryItemLink then
+        for slot in pairs(SLOT_INFO) do
+            local l = GetInventoryItemLink("player", slot)
+            local id = l and tonumber(l:match("item:(%d+)"))
+            if id then w.ids[id] = true; w.score[slot] = scoreOf(id, l, w.key) or 0 end
+        end
+    end
+    wornNow = w
+    return w
+end
+G.ReadWorn = readWorn
+
 local function wornScore(slot)
-    local e = wornEntry(slot)
-    if not e then return 0 end
-    return scoreOf(e.id, e.link, scoreKey()) or 0
+    return (wornNow or readWorn()).score[slot] or 0
 end
 
 local function isWorn(id)
-    if not (id and GetInventoryItemLink) then return false end
-    for slot in pairs(SLOT_INFO) do
-        local l = GetInventoryItemLink("player", slot)
-        if l and tonumber(l:match("item:(%d+)")) == id then return true end
-    end
-    return false
+    if not id then return false end
+    return (wornNow or readWorn()).ids[id] == true
 end
 
 -- an item in a slot: icon, quality frame and glow
@@ -1007,6 +1075,7 @@ end
 
 local function paint()
     if not ui.page then return end
+    readWorn()
     local res = state.result
     paintBanner(res)
     local mine = ui.preview == "Your gear"
@@ -1014,6 +1083,7 @@ local function paint()
         if mine then paintWorn(b, res) else paintBest(b, res) end
     end
     dressModel()
+    wornNow = nil
 end
 G.Paint = paint
 
@@ -1024,6 +1094,9 @@ local retryQueued = false
 function G.Refresh()
     if not (ui.page and ui.page:IsVisible()) then return end
     paint()
+    -- settled (nothing changed, nothing still loading): no need to look again
+    if state.result and not G.stale and (state.waiting or 0) == 0 and not state.running and state.result.key == scoreKey() then return end
+    G.stale = false
     G.Compute(function()
         paint()
         if (state.waiting or 0) > 0 and not retryQueued and C_Timer then

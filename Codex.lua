@@ -2396,7 +2396,7 @@ function M:OnEnable()
     end)
 
     -- upgrade arrows follow your gear, spec and level
-    for _, ev in ipairs({ "PLAYER_EQUIPMENT_CHANGED", "PLAYER_LEVEL_UP", "CHARACTER_POINTS_CHANGED", "PLAYER_TALENT_UPDATE" }) do
+    for _, ev in ipairs({ "PLAYER_EQUIPMENT_CHANGED", "PLAYER_LEVEL_UP", "CHARACTER_POINTS_CHANGED", "PLAYER_TALENT_UPDATE", "QUEST_TURNED_IN" }) do
         pcall(self.RegisterEvent, self, ev, function() M.ForgetUpgrades(); if ns.Gear then ns.Gear.Forget() end; refreshPage() end)
     end
 

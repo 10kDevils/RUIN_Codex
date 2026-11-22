@@ -6,6 +6,7 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## 0.8.3
 
+- **Best in Slot no longer stutters the game.** It used to work through every candidate again (thousands of quest rewards and drops) each time a batch of items arrived from the server, every 3 seconds while any were loading, reading 60 item tooltips a frame. Now it remembers each item's verdict and the candidate list until your gear, level, spec or a handed-in quest changes them, so later passes only look at items still loading; it works within 4 ms a frame; it reads what you wear once a repaint instead of for every slot; and once everything's loaded it stops looking.
 - **Quest rewards checked against ForeverDB's complete lists** (all 4,433 WoW Forever quests and 23,805 items, Nov 21). Every quest and dungeon drop RUIN knows was already there; Best in Slot gains the rewards it was missing: Glimmering Mithril Insignia (trinket) from Did You Lose This?, the four Kolkar rewards from Khan Hratha (WoW Forever's new Desolace quest; the older quests that gave them are kept), and the Silver Star from Scramble. Seven rewards the game's item list doesn't have are dropped, so the tab never suggests them: Old Blanchy's Blanket, Old Leather Belt, Old Leather Jacket, the Restless Souls reward and the three Scarlet Savant rewards (Cap of the Scarlet Savant, Leggings of Arcana, Breastplate of Bloodthirst).
 ## 0.8.2
 
