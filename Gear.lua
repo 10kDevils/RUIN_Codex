@@ -1308,9 +1308,11 @@ local function paintBanner(res)
     if st.running and not res then
         text = C.dim .. ("Looking through the loot Codex knows%s... %d of %d|r"):format(ahead and (" for level " .. pl) or "", st.done or 0, st.total or 0)
     elseif res then
-        text = C.dim .. (ahead and ("The best you could wear at level " .. pl .. ", scored by ") or "Dungeon and raid loot you can wear now, scored by ")
+        -- kept short: the line has about 220px before the level slider
+        text = C.dim .. (ahead and ("Level " .. pl .. " best, by ") or "Best now, by ")
             .. tostring(res.by or "Codex") .. ".|r"
-        if (st.waiting or 0) > 0 then text = text .. C.dim .. (" Loading %d items...|r"):format(st.waiting) end
+        -- while item details are still arriving, the count takes the line's place
+        if (st.waiting or 0) > 0 then text = C.dim .. ("Loading %d items...|r"):format(st.waiting) end
     elseif ahead then
         text = C.dim .. ("Working out level %d...|r"):format(pl)
     else

@@ -311,7 +311,7 @@ ns.Dungeons = {
         status = "complete",
     },
     {
-        id = "exc", name = "Excavation Site: Wetlands", areas = { 16732 }, levels = "24-31", where = "Wetlands, above Whelgar's Excavation", forever = "2026-11-05",
+        id = "exc", name = "Excavation Site: Wetlands", short = "Exc. Site: Wetlands", areas = { 16732 }, levels = "24-31", where = "Wetlands, above Whelgar's Excavation", forever = "2026-11-05",
         bosses = {
             { "Saltspine", "Level 28. Tendon Rip (heavy slow on tank); Dust Storm: -25% hit within 10 yd - casters stay out of melee; Clear nearby crocolisk packs first." },
             { "Shadetooth", "Hardest fight: raptor packs in grass + pre-boss wave - clear before pull; Rend / Terrifying Roar / Enrage at about 30% - save stuns; Can be slowed and stunned." },

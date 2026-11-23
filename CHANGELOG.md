@@ -4,6 +4,9 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## Unreleased
 
+- **Best in Slot status line fits**: the line under your name is shorter ("Best now, by Codex's stat weights.") so it isn't cut off before the level slider, and while items load it shows *Loading N items...* in its place.
+- **Excavation Site's journal name fits**: the dungeon list shows it as *Exc. Site: Wetlands*, so the zone is no longer cut off.
+
 ## 0.8.10
 
 - Version matched to the rest of the RUIN suite; no changes.
