@@ -1191,21 +1191,24 @@ function G.SetPreviewLevel(l)
     G.ComputePreview(function() G.Paint() end)
 end
 
-local SLIDER_W = 236
+local SLIDER_W = 236       -- the track: your level at its left end, 60 at its right
+local THUMB_W = 28         -- the knob; the game moves its centre from half a knob in at either end
 function G.BuildSlider(page, ac)
     local holder = CreateFrame("Frame", nil, page)
-    holder:SetSize(SLIDER_W + 24, 52)
+    holder:SetSize(SLIDER_W + THUMB_W + 8, 52)
     holder:SetPoint("TOP", page, "TOP", 8, -6)
     ui.sliderHolder = holder
     ui.sliderLabel = holder:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     ui.sliderLabel:SetPoint("TOP", holder, "TOP", 0, 0)
     local sl = CreateFrame("Slider", nil, holder)
-    sl:SetSize(SLIDER_W, 14)
+    -- a knob's width wider than the track, so the knob's centre runs exactly
+    -- along it: on your level at the left, on each notch, on 60 at the right
+    sl:SetSize(SLIDER_W + THUMB_W, 14)
     sl:SetPoint("TOP", ui.sliderLabel, "BOTTOM", 0, -6)
     if sl.SetOrientation then sl:SetOrientation("HORIZONTAL") end
     local track = sl:CreateTexture(nil, "BACKGROUND")
-    track:SetPoint("LEFT", 0, 0)
-    track:SetPoint("RIGHT", 0, 0)
+    track:SetPoint("LEFT", THUMB_W / 2, 0)
+    track:SetPoint("RIGHT", -THUMB_W / 2, 0)
     track:SetHeight(4)
     track:SetColorTexture(0, 0, 0, 0.75)
     local fill = sl:CreateTexture(nil, "BORDER")
@@ -1215,7 +1218,7 @@ function G.BuildSlider(page, ac)
     ui.sliderFill = fill
     local thumb = sl:CreateTexture(nil, "OVERLAY")
     thumb:SetTexture("Interface\\Buttons\\UI-SliderBar-Button-Horizontal")
-    thumb:SetSize(28, 28)
+    thumb:SetSize(THUMB_W, THUMB_W)
     if sl.SetThumbTexture then sl:SetThumbTexture(thumb) end
     if sl.SetObeyStepOnDrag then sl:SetObeyStepOnDrag(true) end
     if sl.SetValueStep then sl:SetValueStep(1) end
@@ -1271,9 +1274,9 @@ function G.LayoutSlider()
                 end
                 local x = (l - cur) / (G.MAX_LEVEL - cur) * SLIDER_W
                 t.mark:ClearAllPoints()
-                t.mark:SetPoint("CENTER", sl, "LEFT", x, 0)
+                t.mark:SetPoint("CENTER", sl, "LEFT", THUMB_W / 2 + x, 0)
                 t.num:ClearAllPoints()
-                t.num:SetPoint("TOP", sl, "BOTTOMLEFT", x, -1)
+                t.num:SetPoint("TOP", sl, "BOTTOMLEFT", THUMB_W / 2 + x, -1)
                 t.num:SetText(tostring(l))
                 t.mark:Show(); t.num:Show()
             end
