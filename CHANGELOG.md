@@ -4,7 +4,7 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## Unreleased
 
-## 0.8.3
+## 0.8.9
 
 - **Preview your best gear at a higher level.** A slider at the top of the Best in Slot tab: all the way left is your level now; slide right to see the best you could wear at a higher level, with a notch at every fifth level above yours up to 60 (5, 10, 15 ... 55, 60). It snaps to the notches (the mouse wheel steps between them), the label says which level you're previewing, and the slots, the character and the gear score follow it. Each level is worked out in the background, with the same rules as your own (armour as if you were that level: mail and plate from 40). At 60 there's no slider. The knob sits right on your level at the left end, on each notch, and on 60 at the right (the game keeps a slider's knob inside its frame, so the track and notches are inset by half a knob to match).
 - **Gold for gear that's best at level 60.** Best in Slot also works out your best pieces at level 60 (after your own level's, in the background; at 60 they're the same). A piece you wear that's the best at 60 gets a gold check instead of the green one, a gold frame, a slowly breathing gold glow, and "Best in slot at 60" under its name, in both the Best in Slot and Your gear views.
