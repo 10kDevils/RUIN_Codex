@@ -4,6 +4,8 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## Unreleased
 
+- **Best in Slot for RUIN Exchange.** Exchange's *Add my Best in Slot* takes the pieces from your Best in Slot list that can be traded (not ones you wear, not ones that bind when picked up) for its watch list.
+
 - **The best quest reward for you.** When a quest offers a choice of rewards, Codex weighs each against what you wear (or uses Ruinous Forever Planner's verdict when it's loaded), marks the best upgrade you can use with its gain ("+18%", or "NEW" for an empty slot) and names it in chat. When none is an upgrade it marks the one that sells for the most. It never picks for you.
 
 - **Best in Slot status line fits**: the line under your name is shorter ("Best now, by Codex's stat weights.") so it isn't cut off before the level slider, and while items load it shows *Loading N items...* in its place.

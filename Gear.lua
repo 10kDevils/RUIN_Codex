@@ -842,6 +842,28 @@ local function isWorn(id)
     return (wornNow or readWorn()).ids[id] == true
 end
 
+-- Your Best in Slot pieces that can be bought: not worn, not bound when
+-- picked up (those never reach the auction house). { { id, slot, name }, ... }
+-- from the result the page shows (now, or the level you preview).
+function G.Buyable()
+    local r = G.ShownResult() or (state and state.result)
+    local out, seen = {}, {}
+    if not (r and r.slots) then return out end
+    for slot, e in pairs(r.slots) do
+        local id = e and e.id
+        if id and not seen[id] and not isWorn(id) then
+            local name, _, _, _, _, _, _, _, _, _, _, _, _, bind = GetItemInfo(id)
+            if bind ~= 1 then                                   -- 1: binds when picked up
+                seen[id] = true
+                out[#out + 1] = { id = id, slot = slot, name = name or e.name }
+            end
+        end
+    end
+    table.sort(out, function(a, b) return a.slot < b.slot end)
+    return out
+end
+
+
 -- an item in a slot: icon, quality frame and glow
 local function showItem(b, e)
     if e then

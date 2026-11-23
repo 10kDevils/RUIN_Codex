@@ -307,6 +307,8 @@ local function score(link, class, spec)
 end
 M.Score = score
 function M.SlotName(slot) return SLOT_NAMES[slot] end
+-- for RUIN Exchange's watch list: your Best in Slot pieces that can be bought
+function M:BisBuyable() return ns.Gear and ns.Gear.Buyable and ns.Gear.Buyable() or {} end
 
 local function sameItem(a, b)
     return a and b and itemIdFromLink(a) == itemIdFromLink(b)
