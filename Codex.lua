@@ -1559,6 +1559,7 @@ M.ItemKinds = itemKinds
 
 -- What your class can wear and wield (WoW's trainable proficiencies; mail
 -- and plate come at level 40).
+-- (M.AsLevel: judge as if at that level, for Best in Slot's level preview)
 local ARMOR_MAX = { WARRIOR = 4, PALADIN = 4, HUNTER = 3, SHAMAN = 3, ROGUE = 2, DRUID = 2, PRIEST = 1, MAGE = 1, WARLOCK = 1 }
 local ARMOR_BEFORE_40 = { WARRIOR = 3, PALADIN = 3, HUNTER = 2, SHAMAN = 2 }
 local SHIELDS = { WARRIOR = true, PALADIN = true, SHAMAN = true }
@@ -1578,7 +1579,7 @@ function M.CanUseKind(classID, subID)
         if not subID or subID == 0 then return true end
         if subID >= 1 and subID <= 4 then
             local max = ARMOR_MAX[cls] or 1
-            if (UnitLevel and (UnitLevel("player") or 60) < 40) and ARMOR_BEFORE_40[cls] then max = ARMOR_BEFORE_40[cls] end
+            if (M.AsLevel or (UnitLevel and UnitLevel("player")) or 60) < 40 and ARMOR_BEFORE_40[cls] then max = ARMOR_BEFORE_40[cls] end
             return subID <= max
         end
         if subID == 6 then return SHIELDS[cls] == true end
@@ -1600,7 +1601,7 @@ local function canUse(id)
             or loc == "INVTYPE_BODY" or subID == 0 then return true end
         if subID and subID >= 1 and subID <= 4 then
             local max = ARMOR_MAX[cls] or 1
-            if (UnitLevel and (UnitLevel("player") or 60) < 40) and ARMOR_BEFORE_40[cls] then max = ARMOR_BEFORE_40[cls] end
+            if (M.AsLevel or (UnitLevel and UnitLevel("player")) or 60) < 40 and ARMOR_BEFORE_40[cls] then max = ARMOR_BEFORE_40[cls] end
             return subID <= max
         end
         if subID == 6 then return SHIELDS[cls] == true end

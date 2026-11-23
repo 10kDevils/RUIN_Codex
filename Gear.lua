@@ -111,7 +111,7 @@ end
 -- level, and each item's verdict for your spec. Gear, level, spec or a quest
 -- handed in clears them.
 local gathered, judged, gaveUp = {}, {}, {}
-function G.Forget() scores = {}; gathered = {}; judged = {}; G.stale = true end
+function G.Forget() scores = {}; gathered = {}; judged = {}; G.stale = true; G.stalePrev = true end
 
 ---------------------------------------------------------------------------
 -- Where items come from
@@ -147,7 +147,16 @@ local function gather(level)
     return out
 end
 
+local gatherAt
 gatherAll = function(level, withWorn)
+    local ok, out = pcall(gatherAt, level, withWorn)
+    local cm = M()
+    if cm then cm.AsLevel = nil end
+    if not ok then error(out, 0) end
+    return out
+end
+
+gatherAt = function(level, withWorn)
     local out, seen = {}, {}
     local function add(id, src)
         id = tonumber(id)
@@ -205,6 +214,7 @@ gatherAll = function(level, withWorn)
         local cbit = classId and bit and bit.lshift(1, classId - 1)
         local isDone = (C_QuestLog and C_QuestLog.IsQuestFlaggedCompleted) or rawget(_G, "IsQuestFlaggedCompleted")
         local areaName = C_Map and C_Map.GetAreaInfo
+        if cm then cm.AsLevel = level end
         for id, r in pairs(QR) do
             if not (cm and cm.CanUseKind) or cm.CanUseKind(r[2], r[3]) ~= false then
                 for k = 4, #r do
@@ -295,7 +305,10 @@ judgeFresh = function(c, level, key)
     if not c.worn then
         if (tonumber(minLevel) or 0) > level then return nil end
         if (tonumber(quality) or 0) < 1 then return nil end
-        if cm.CanUse(c.id) ~= true then return nil end
+        cm.AsLevel = level
+        local usable = cm.CanUse(c.id)
+        cm.AsLevel = nil
+        if usable ~= true then return nil end
     end
     local group = groupOf(loc)
     if not group then return nil end
@@ -400,6 +413,43 @@ end
 -- they're the same). An equipped piece that's best at 60 gets a gold mark.
 function G.Compute60(done)
     run(state60, G.MAX_LEVEL, done, G.Compute60)
+end
+
+-- The level preview (the slider on the tab): the best you could wear at a
+-- higher level. Your own level's result, the level-60 pass at 60, and a
+-- pass of its own in between.
+local statePrev = { running = false, dirty = false, result = nil, waiting = 0 }
+G.statePrev = statePrev
+
+function G.MyLevel() return (UnitLevel and UnitLevel("player")) or 1 end
+function G.PreviewLevel()
+    local cur = G.MyLevel()
+    local l = tonumber(G.UI and G.UI.previewLevel)
+    if not l or l <= cur then return cur end
+    return math.min(l, G.MAX_LEVEL)
+end
+
+-- the state behind what's shown
+function G.ShownState()
+    local l, cur = G.PreviewLevel(), G.MyLevel()
+    if l <= cur then return state end
+    if l >= G.MAX_LEVEL then return state60 end
+    return statePrev
+end
+
+function G.ShownResult()
+    local l, cur = G.PreviewLevel(), G.MyLevel()
+    if l <= cur then return state.result end
+    if l >= G.MAX_LEVEL then return G.Result60() end
+    local r = statePrev.result
+    if r and r.level == l and r.key == scoreKey() then return r end
+end
+
+function G.ComputePreview(done)
+    local l, cur = G.PreviewLevel(), G.MyLevel()
+    if l <= cur then return end
+    if l >= G.MAX_LEVEL then G.Compute60(done); return end
+    run(statePrev, l, done, G.ComputePreview)
 end
 
 function G.Result60()
@@ -923,7 +973,7 @@ local DRESS_ORDER = { 1, 3, 15, 5, 9, 10, 6, 7, 8, 16, 17, 18 }
 local function dressModel(force)
     local m = ui.model
     if not m then return end
-    local res = state.result
+    local res = G.ShownResult()
     local wearBis = res and ui.preview ~= "Your gear"
     local sig = "gear"
     if wearBis then
@@ -1008,7 +1058,7 @@ function G.Build(page)
     ui.title:SetPoint("TOPLEFT", ui.nameText, "BOTTOMLEFT", 1, -3)
     ui.info = W.Label(page, "", "GameFontHighlightSmall")
     ui.info:SetPoint("TOPLEFT", ui.title, "BOTTOMLEFT", 0, -3)
-    ui.info:SetPoint("RIGHT", page, "CENTER", 60, 0)
+    ui.info:SetPoint("RIGHT", page, "CENTER", -132, 0)
     ui.info:SetJustifyH("LEFT")
     ui.info:SetWordWrap(false)
 
@@ -1029,6 +1079,10 @@ function G.Build(page)
     ui.ratingHi:SetPoint("TOPRIGHT", ui.rating.fill, "TOPRIGHT")
     ui.ratingHi:SetHeight(3)
     gradient(ui.ratingHi, "VERTICAL", { 1, 1, 1, 0 }, { 1, 1, 1, 0.35 })
+
+    -- the level preview: your level at the left, every fifth level above it
+    -- to 60 a notch to the right
+    G.BuildSlider(page, ac)
 
     local rule = flourish(page, 520, ac)
     rule:SetPoint("TOP", page, "TOP", 0, -TOP + 12)
@@ -1106,6 +1160,134 @@ function G.Build(page)
 end
 
 ---------------------------------------------------------------------------
+-- The level preview slider
+---------------------------------------------------------------------------
+-- The stops: your level, then every fifth level above it up to 60.
+function G.PreviewStops(cur)
+    cur = cur or G.MyLevel()
+    local stops = { cur }
+    for l = 5, G.MAX_LEVEL, 5 do if l > cur then stops[#stops + 1] = l end end
+    return stops
+end
+
+local function nearestStop(v, stops)
+    local best, d = stops[1], math.huge
+    for _, l in ipairs(stops) do
+        local dd = math.abs(l - v)
+        if dd < d then best, d = l, dd end
+    end
+    return best
+end
+G.NearestStop = nearestStop
+
+function G.SetPreviewLevel(l)
+    local cur = G.MyLevel()
+    l = nearestStop(tonumber(l) or cur, G.PreviewStops(cur))
+    if l <= cur then l = nil end
+    if l == ui.previewLevel then return end
+    ui.previewLevel = l
+    ui.dressed = nil
+    G.Paint()
+    G.ComputePreview(function() G.Paint() end)
+end
+
+local SLIDER_W = 236
+function G.BuildSlider(page, ac)
+    local holder = CreateFrame("Frame", nil, page)
+    holder:SetSize(SLIDER_W + 24, 52)
+    holder:SetPoint("TOP", page, "TOP", 8, -6)
+    ui.sliderHolder = holder
+    ui.sliderLabel = holder:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    ui.sliderLabel:SetPoint("TOP", holder, "TOP", 0, 0)
+    local sl = CreateFrame("Slider", nil, holder)
+    sl:SetSize(SLIDER_W, 14)
+    sl:SetPoint("TOP", ui.sliderLabel, "BOTTOM", 0, -6)
+    if sl.SetOrientation then sl:SetOrientation("HORIZONTAL") end
+    local track = sl:CreateTexture(nil, "BACKGROUND")
+    track:SetPoint("LEFT", 0, 0)
+    track:SetPoint("RIGHT", 0, 0)
+    track:SetHeight(4)
+    track:SetColorTexture(0, 0, 0, 0.75)
+    local fill = sl:CreateTexture(nil, "BORDER")
+    fill:SetPoint("LEFT", track, "LEFT", 0, 0)
+    fill:SetHeight(4)
+    fill:SetColorTexture(ac[1], ac[2], ac[3], 0.9)
+    ui.sliderFill = fill
+    local thumb = sl:CreateTexture(nil, "OVERLAY")
+    thumb:SetTexture("Interface\\Buttons\\UI-SliderBar-Button-Horizontal")
+    thumb:SetSize(28, 28)
+    if sl.SetThumbTexture then sl:SetThumbTexture(thumb) end
+    if sl.SetObeyStepOnDrag then sl:SetObeyStepOnDrag(true) end
+    if sl.SetValueStep then sl:SetValueStep(1) end
+    sl:EnableMouseWheel(true)
+    sl:SetScript("OnValueChanged", function(self, v)
+        if ui.sliderSetting then return end
+        local stops = G.PreviewStops()
+        local snap = nearestStop(v, stops)
+        if snap ~= v then ui.sliderSetting = true; self:SetValue(snap); ui.sliderSetting = false end
+        G.SetPreviewLevel(snap)
+    end)
+    sl:SetScript("OnMouseWheel", function(self, delta)
+        local stops, cur = G.PreviewStops(), G.PreviewLevel()
+        local idx = 1
+        for i, l in ipairs(stops) do if l == cur then idx = i end end
+        idx = math.max(1, math.min(#stops, idx + (delta > 0 and 1 or -1)))
+        self:SetValue(stops[idx])
+    end)
+    sl:SetScript("OnEnter", function(self)
+        if not GameTooltip then return end
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        GameTooltip:AddLine("Preview a higher level", 1, 0.82, 0)
+        GameTooltip:AddLine("Slide right to see the best you could wear at a higher level: every fifth level up to 60. All the way left is your level now.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    sl:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+    ui.slider = sl
+    ui.sliderTicks = {}
+end
+
+-- the notches and the range follow your level (so they're laid out on paint)
+function G.LayoutSlider()
+    local sl = ui.slider
+    if not sl then return end
+    local cur = G.MyLevel()
+    if cur >= G.MAX_LEVEL then ui.sliderHolder:Hide(); ui.previewLevel = nil; return end
+    ui.sliderHolder:Show()
+    if ui.sliderFor ~= cur then
+        ui.sliderFor = cur
+        if ui.previewLevel and ui.previewLevel <= cur then ui.previewLevel = nil end
+        sl:SetMinMaxValues(cur, G.MAX_LEVEL)
+        for _, t in ipairs(ui.sliderTicks) do t.mark:Hide(); t.num:Hide() end
+        local i = 0
+        for _, l in ipairs(G.PreviewStops(cur)) do
+            if l > cur then
+                i = i + 1
+                local t = ui.sliderTicks[i]
+                if not t then
+                    t = { mark = sl:CreateTexture(nil, "ARTWORK"), num = sl:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall") }
+                    t.mark:SetSize(2, 10)
+                    t.mark:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.85)
+                    ui.sliderTicks[i] = t
+                end
+                local x = (l - cur) / (G.MAX_LEVEL - cur) * SLIDER_W
+                t.mark:ClearAllPoints()
+                t.mark:SetPoint("CENTER", sl, "LEFT", x, 0)
+                t.num:ClearAllPoints()
+                t.num:SetPoint("TOP", sl, "BOTTOMLEFT", x, -1)
+                t.num:SetText(tostring(l))
+                t.mark:Show(); t.num:Show()
+            end
+        end
+    end
+    local pl = G.PreviewLevel()
+    ui.sliderSetting = true
+    sl:SetValue(pl)
+    ui.sliderSetting = false
+    ui.sliderFill:SetWidth(math.max(0.01, (pl - cur) / (G.MAX_LEVEL - cur) * SLIDER_W))
+    ui.sliderLabel:SetText(pl > cur and ("|cffffd040Previewing level " .. pl .. "|r") or ("Your level (" .. cur .. ")  " .. C.dim .. "slide to preview|r"))
+end
+
+---------------------------------------------------------------------------
 -- Painting
 ---------------------------------------------------------------------------
 local function paintBanner(res)
@@ -1118,11 +1300,16 @@ local function paintBanner(res)
     ui.title:SetText(("Level %d %s  |c%s%s%s|r"):format(level, race, hex, spec and (tostring(spec) .. " ") or "", cname))
 
     local text
-    if state.running and not res then
-        text = C.dim .. ("Looking through the loot Codex knows... %d of %d|r"):format(state.done or 0, state.total or 0)
+    local st, pl = G.ShownState(), G.PreviewLevel()
+    local ahead = pl > G.MyLevel()
+    if st.running and not res then
+        text = C.dim .. ("Looking through the loot Codex knows%s... %d of %d|r"):format(ahead and (" for level " .. pl) or "", st.done or 0, st.total or 0)
     elseif res then
-        text = C.dim .. "Dungeon and raid loot you can wear now, scored by " .. tostring(res.by or "Codex") .. ".|r"
-        if (state.waiting or 0) > 0 then text = text .. C.dim .. (" Loading %d items...|r"):format(state.waiting) end
+        text = C.dim .. (ahead and ("The best you could wear at level " .. pl .. ", scored by ") or "Dungeon and raid loot you can wear now, scored by ")
+            .. tostring(res.by or "Codex") .. ".|r"
+        if (st.waiting or 0) > 0 then text = text .. C.dim .. (" Loading %d items...|r"):format(st.waiting) end
+    elseif ahead then
+        text = C.dim .. ("Working out level %d...|r"):format(pl)
     else
         text = ""
     end
@@ -1150,7 +1337,8 @@ end
 local function paint()
     if not ui.page then return end
     readWorn()
-    local res = state.result
+    if G.LayoutSlider then G.LayoutSlider() end
+    local res = G.ShownResult()
     paintBanner(res)
     local mine = ui.preview == "Your gear"
     for _, b in pairs(ui.slots or {}) do
@@ -1172,6 +1360,10 @@ function G.Refresh()
     local level = (UnitLevel and UnitLevel("player")) or 1
     local need60 = level < G.MAX_LEVEL and not state60.running
         and (not state60.result or state60.result.key ~= scoreKey() or (state60.waiting or 0) > 0 or G.stale60)
+    local pl = G.PreviewLevel()
+    local needPrev = pl > level and pl < G.MAX_LEVEL and not statePrev.running
+        and (not G.ShownResult() or (statePrev.waiting or 0) > 0 or G.stalePrev)
+    if needPrev then G.stalePrev = false; G.ComputePreview(paint) end
     if state.result and not G.stale and (state.waiting or 0) == 0 and not state.running and state.result.key == scoreKey() then
         if need60 then G.stale60 = false; G.Compute60(paint) end
         return
