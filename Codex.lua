@@ -306,6 +306,7 @@ local function score(link, class, spec)
     return ns.ItemStats.Score(stats, w, class, spec, RANGED_LOC[equipLoc(link) or ""] == true)
 end
 M.Score = score
+function M.SlotName(slot) return SLOT_NAMES[slot] end
 
 local function sameItem(a, b)
     return a and b and itemIdFromLink(a) == itemIdFromLink(b)
@@ -2337,6 +2338,7 @@ function M:AddLoot(instance, data)
 end
 
 function M:OnEnable()
+    if ns.RewardPick then ns.RewardPick.Init(self) end
     if type(RUIN_CodexDB) ~= "table" then RUIN_CodexDB = {} end
     db = RUIN_CodexDB
     for k, v in pairs(DEFAULTS) do if db[k] == nil then db[k] = v end end

@@ -18,6 +18,7 @@ Weights.lua
 ItemStats.lua
 Codex.lua
 Gear.lua
+RewardPick.lua
 RankUp.lua
 SpellMath.lua
 MacroSeed.lua
