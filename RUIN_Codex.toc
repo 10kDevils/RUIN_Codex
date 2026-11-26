@@ -2,7 +2,7 @@
 ## Title: |cffe6b862RUIN|r Codex
 ## Notes: Class macros you can add in one click, a macro command reference, a dungeon and raid journal with boss loot, a Best in Slot view for your level, new spell ranks onto your bars after training, and an upgrade line on item tooltips.
 ## Author: RUIN
-## Version: 0.8.10
+## Version: 0.9.0
 ## Dependencies: RUIN_Core
 ## SavedVariables: RUIN_CodexDB
 ## IconTexture: Interface\AddOns\RUIN_Core\Media\BadgeCodex

@@ -2,7 +2,7 @@
 
 Versioning: the third number counts the meaningful changes made since the second number last went up.
 
-## Unreleased
+## 0.9.0
 
 - **Best in Slot for RUIN Exchange.** Exchange's *Add my Best in Slot* takes the pieces from your Best in Slot list that can be traded (not ones you wear, not ones that bind when picked up) for its watch list.
 
